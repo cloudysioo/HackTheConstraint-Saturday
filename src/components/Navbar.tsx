@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pill, UserCheck, Stethoscope } from 'lucide-react';
+import { UserCheck, Stethoscope } from 'lucide-react';
 import { useMedications } from '../context/MedicationContext';
 
 export const Navbar: React.FC = () => {
@@ -11,23 +11,24 @@ export const Navbar: React.FC = () => {
         <div className="flex items-center justify-between h-16 sm:h-20">
           
           {/* Logo & Portal Identity */}
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/10 border border-white/20 text-secondary shadow-inner">
-              <Pill className="h-6 w-6 stroke-[2.2]" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-                  MedTrace
-                </span>
-                <span className="hidden sm:inline-block text-[10px] font-bold uppercase tracking-wider bg-secondary/20 text-secondary px-2 py-0.5 rounded-full border border-secondary/30">
-                  Continuity Engine
-                </span>
+          <div className="flex items-center space-x-3.5">
+            <a href="#" onClick={(e) => { e.preventDefault(); setActivePortal('patient'); }} className="flex items-center space-x-3 group">
+              <img
+                src="/medtrace-logo-cropped.png"
+                alt="medTrace"
+                className="h-10 sm:h-12 w-auto object-contain transition-transform group-hover:scale-105"
+              />
+              <div className="hidden md:block">
+                <div className="flex items-center space-x-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-secondary/20 text-secondary px-2 py-0.5 rounded-full border border-secondary/30">
+                    Continuity Engine
+                  </span>
+                </div>
+                <p className="text-[11px] text-white/70 mt-0.5">
+                  The Forgotten Prescription • Closed-Loop Handover Safety
+                </p>
               </div>
-              <p className="text-xs text-white/70 hidden md:block">
-                The Forgotten Prescription • Closed-Loop Handover Safety
-              </p>
-            </div>
+            </a>
           </div>
 
           {/* Central Portal Switcher */}
