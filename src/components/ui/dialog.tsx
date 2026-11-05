@@ -28,14 +28,17 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
-      {children}
+      {/* Scroll container that preserves top margin/padding on smaller laptop viewports */}
+      <div className="flex min-h-full items-start sm:items-center justify-center p-3 sm:p-6 text-left my-auto">
+        {children}
+      </div>
     </div>
   );
 }
