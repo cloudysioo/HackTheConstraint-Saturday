@@ -88,7 +88,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       role: 'PATIENT',
       eventType: 'FLAG_CREATED',
       summary: `Patient flagged discrepancy (${discrepancyType}): "${comment}"`,
-      details: `Discrepancy category: ${discrepancyType}. Queued for Dr. Sarah Jenkins.`,
+      details: `Discrepancy category: ${discrepancyType}. Queued for Dr. Rajesh Iyer.`,
     };
 
     setAuditLogs((prev) => [newAuditEntry, ...prev]);
@@ -126,13 +126,13 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             if (revisedValues.strength) updatedMed.strength = revisedValues.strength;
             if (revisedValues.instructions) updatedMed.instructions = revisedValues.instructions;
             eventType = 'MEDICATION_REVISED';
-            summary = `Dr. Jenkins amended prescription: Strength set to ${revisedValues.strength || med.strength}. Note: "${note}"`;
+            summary = `Dr. Iyer amended prescription: Strength set to ${revisedValues.strength || med.strength}. Note: "${note}"`;
           } else if (action === 'APPROVE_EXTRACTION') {
             eventType = 'EXTRACTION_APPROVED';
-            summary = `Dr. Jenkins confirmed and approved AI extraction. Note: "${note}"`;
+            summary = `Dr. Iyer confirmed and approved AI extraction. Note: "${note}"`;
           } else {
             eventType = 'FLAG_DISMISSED';
-            summary = `Dr. Jenkins reaffirmed original prescription after review. Note: "${note}"`;
+            summary = `Dr. Iyer reaffirmed original prescription after review. Note: "${note}"`;
           }
 
           return updatedMed;

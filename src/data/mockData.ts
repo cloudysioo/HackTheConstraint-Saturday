@@ -7,15 +7,15 @@ import {
 } from '../types/medication';
 
 export const mockPatient: PatientProfile = {
-  name: 'John Doe',
+  name: 'Arjun Sharma',
   id: 'PT-94021',
   dob: '1968-04-12',
-  doctor: 'Dr. Sarah Jenkins, MD',
+  doctor: 'Dr. Rajesh Iyer, MD',
   clinic: 'Metro Health Primary Care',
 };
 
 export const mockClinician: ClinicianProfile = {
-  name: 'Dr. Sarah Jenkins, MD',
+  name: 'Dr. Rajesh Iyer, MD',
   title: 'Lead Primary Care Physician',
   npi: '184920491',
   clinic: 'Metro Health Primary Care',
@@ -47,7 +47,7 @@ export const initialMockMedications: Medication[] = [
     },
     clinicianResolution: {
       action: 'APPROVE_EXTRACTION',
-      clinicianName: 'Dr. Sarah Jenkins, MD',
+      clinicianName: 'Dr. Rajesh Iyer, MD',
       clinicianNote: 'Extraction matches written prescription pad exactly. Verified.',
       resolvedAt: 'Today at 10:30 AM',
     },
@@ -136,7 +136,7 @@ export const initialAuditLogs: AuditLogEntry[] = [
     timestamp: 'Today at 10:30 AM',
     medicationId: 'med-1',
     medicationName: 'Atorvastatin',
-    actor: 'Dr. Sarah Jenkins, MD',
+    actor: 'Dr. Rajesh Iyer, MD',
     role: 'CLINICIAN',
     eventType: 'EXTRACTION_APPROVED',
     summary: 'Verified Atorvastatin 20mg against prescription pad source.',
@@ -146,7 +146,7 @@ export const initialAuditLogs: AuditLogEntry[] = [
     timestamp: 'Today at 10:35 AM',
     medicationId: 'med-2',
     medicationName: 'Lisinopril',
-    actor: 'John Doe (Patient)',
+    actor: 'Arjun Sharma (Patient)',
     role: 'PATIENT',
     eventType: 'FLAG_CREATED',
     summary: 'Patient flagged dosage discrepancy: "I believe my doctor said 5mg, not 10mg."',

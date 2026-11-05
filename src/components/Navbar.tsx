@@ -69,7 +69,7 @@ export const Navbar: React.FC = () => {
             {activePortal === 'patient' ? (
               <div className="flex items-center gap-2.5 bg-white/10 px-3 py-1.5 rounded-lg border border-white/15">
                 <div className="w-7 h-7 rounded-full bg-secondary/30 text-white flex items-center justify-center font-bold text-xs">
-                  JD
+                  {patient.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                 </div>
                 <div className="text-left text-xs leading-tight">
                   <div className="font-semibold text-white">{patient.name}</div>

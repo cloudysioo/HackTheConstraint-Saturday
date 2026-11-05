@@ -32,7 +32,7 @@ export const PrescriptionPreview: React.FC<PrescriptionPreviewProps> = ({
             1200 Healthcare Ave, Suite 400 • Tel: (555) 234-5678
           </p>
           <p className={`text-neutral-600 font-medium ${compact ? 'text-[10px]' : 'text-xs'}`}>
-            Dr. Sarah Jenkins, M.D. • NPI: 184920491
+            Dr. Rajesh Iyer, M.D. • NPI: 184920491
           </p>
         </div>
         <div className="text-right">
@@ -49,7 +49,7 @@ export const PrescriptionPreview: React.FC<PrescriptionPreviewProps> = ({
       <div className={`grid grid-cols-2 gap-2 bg-neutral-100/60 p-2.5 rounded border border-neutral-200/80 mb-5 font-sans ${compact ? 'text-[10px] p-2' : 'text-xs'}`}>
         <div>
           <span className="text-neutral-500">Patient: </span>
-          <span className="font-semibold text-neutral-900">John Doe</span>
+          <span className="font-semibold text-neutral-900">Arjun Sharma</span>
         </div>
         <div>
           <span className="text-neutral-500">DOB: </span>
@@ -168,7 +168,7 @@ export const PrescriptionPreview: React.FC<PrescriptionPreviewProps> = ({
         </div>
         <div className="text-right">
           <div className="font-serif italic text-sm text-neutral-800 border-b border-neutral-400 pb-0.5">
-            Sarah Jenkins, MD
+            Rajesh Iyer, MD
           </div>
           <div className="text-[9px] text-neutral-400">Electronic Prescribing Stamp</div>
         </div>

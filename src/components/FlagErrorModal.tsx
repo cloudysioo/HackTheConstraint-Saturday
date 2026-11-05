@@ -97,7 +97,7 @@ export const FlagErrorModal: React.FC<FlagErrorModalProps> = ({
             </div>
             <h3 className="text-lg font-bold text-neutral-900">Flag Submitted to Clinician</h3>
             <p className="text-sm text-neutral-600 max-w-md mx-auto">
-              Your flag for <span className="font-semibold text-neutral-800">{medication.name}</span> has been saved and routed to Dr. Sarah Jenkins for verification.
+              Your flag for <span className="font-semibold text-neutral-800">{medication.name}</span> has been saved and routed to Dr. Rajesh Iyer for verification.
             </p>
           </div>
         ) : (

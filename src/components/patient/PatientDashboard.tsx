@@ -382,7 +382,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
           <div>
             <h4 className="text-sm font-bold text-neutral-900">Have questions about your prescription handover?</h4>
             <p className="text-xs text-neutral-600 mt-0.5">
-              Contact Dr. Sarah Jenkins' clinic care team directly at <span className="font-semibold text-neutral-800">(555) 234-5678</span>.
+              Contact Dr. Rajesh Iyer's clinic care team directly at <span className="font-semibold text-neutral-800">(555) 234-5678</span>.
             </p>
           </div>
         </div>
