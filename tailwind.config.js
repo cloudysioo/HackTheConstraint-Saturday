@@ -7,7 +7,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Core MedHandover Brand Design System
+        // Core MedTrace Brand Design System
         primary: {
           DEFAULT: '#1F4E5B', // Dark Blue/Teal (Trust/Primary Actions)
           hover: '#173c46',

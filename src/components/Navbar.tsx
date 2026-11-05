@@ -18,7 +18,7 @@ export const Navbar: React.FC = () => {
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-                  MedHandover
+                  MedTrace
                 </span>
                 <span className="hidden sm:inline-block text-[10px] font-bold uppercase tracking-wider bg-secondary/20 text-secondary px-2 py-0.5 rounded-full border border-secondary/30">
                   Continuity Engine
