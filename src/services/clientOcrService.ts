@@ -132,20 +132,100 @@ const DRUG_DICTIONARY: Record<string, string> = {
   supradyn: 'Daily Multivitamin (Supradyn)',
 };
 
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+export async function preprocessImageForHandwriting(file: File): Promise<File> {
+  if (typeof window === 'undefined' || !file.type.startsWith('image/')) return file;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      const maxDim = 2000;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(file);
+
+      ctx.drawImage(img, 0, 0, width, height);
+      try {
+        const imgData = ctx.getImageData(0, 0, width, height);
+        const data = imgData.data;
+
+        // Adaptive ink contrast stretching for doctor handwriting
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (gray < 130) {
+            gray = Math.max(0, gray * 0.6); // Darken ink strokes
+          } else {
+            gray = Math.min(255, 128 + (gray - 128) * 1.5); // Whiten background
+          }
+          data[i] = gray;
+          data[i + 1] = gray;
+          data[i + 2] = gray;
+        }
+        ctx.putImageData(imgData, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(new File([blob], file.name, { type: 'image/png' }));
+          } else {
+            resolve(file);
+          }
+        }, 'image/png');
+      } catch {
+        resolve(file);
+      }
+    };
+    img.onerror = () => resolve(file);
+    img.src = objectUrl;
+  });
+}
+
 export function parseClinicalInstructions(text: string): string {
   const clean = text.trim();
   if (/dose unclear|unclear|illegible|\?/i.test(clean)) {
     return 'Dose unclear on handwritten prescription - Flagged for clinician verification';
   }
   if (/(?:^|\b)(?:hs|bedtime|night)(?:$|\b)/i.test(clean)) return 'Take 1 tablet daily at bedtime (HS)';
-  if (/(?:^|\b)(?:bid|b\.i\.d|bd|b\.d|twice|2\s*[x×]|2\s*times)(?:$|\b)/i.test(clean)) return 'Take twice daily with meals (BD)';
-  if (/(?:^|\b)(?:tid|t\.i\.d|tds|t\.d\.s|thrice|3\s*[x×]|3\s*times)(?:$|\b)/i.test(clean)) return 'Take 3 times daily after meals (TDS)';
-  if (/(?:^|\b)(?:qid|q\.i\.d|4\s*[x×]|4\s*times)(?:$|\b)/i.test(clean)) return 'Take 4 times daily as directed (QID)';
-  if (/(?:1-0-1)/.test(clean)) return 'Take 1 tablet in morning and 1 at night (twice daily after meals)';
-  if (/(?:1-1-1)/.test(clean)) return 'Take 1 tablet morning, afternoon, and night (3 times daily after meals)';
-  if (/(?:0-0-1)/.test(clean)) return 'Take 1 tablet at night before bedtime';
-  if (/(?:0-1-0)/.test(clean)) return 'Take 1 tablet in afternoon after lunch';
-  if (/(?:1-0-0)/.test(clean)) return 'Take 1 tablet in morning after breakfast';
+  if (/(?:^|\b)(?:bid|b\.i\.d|bd|b\.d|twice|2\s*[x×*]|2\s*times)(?:$|\b)/i.test(clean)) return 'Take twice daily with meals (BD)';
+  if (/(?:^|\b)(?:tid|t\.i\.d|tds|t\.d\.s|thrice|3\s*[x×*]|3\s*times)(?:$|\b)/i.test(clean)) return 'Take 3 times daily after meals (TDS)';
+  if (/(?:^|\b)(?:qid|q\.i\.d|4\s*[x×*]|4\s*times)(?:$|\b)/i.test(clean)) return 'Take 4 times daily as directed (QID)';
+  if (/(?:1-0-1|1-O-1|l-0-l)/i.test(clean)) return 'Take 1 tablet in morning and 1 at night (twice daily after meals)';
+  if (/(?:1-1-1|1-I-1)/i.test(clean)) return 'Take 1 tablet morning, afternoon, and night (3 times daily after meals)';
+  if (/(?:0-0-1|O-O-1)/i.test(clean)) return 'Take 1 tablet at night before bedtime';
+  if (/(?:0-1-0|O-1-O)/i.test(clean)) return 'Take 1 tablet in afternoon after lunch';
+  if (/(?:1-0-0|1-O-O)/i.test(clean)) return 'Take 1 tablet in morning after breakfast';
   if (/(?:^|\b)(?:od|o\.d|once|morning|breakfast)(?:$|\b)/i.test(clean)) return 'Take 1 tablet daily in the morning (OD)';
   if (/(?:^|\b)(?:sos|s\.o\.s|prn|p\.r\.n|as needed)(?:$|\b)/i.test(clean)) return 'Take as needed for symptoms (SOS)';
   if (/(?:empty stomach|ac|a\.c|before food|bbf)/i.test(clean)) return 'Take once daily on an empty stomach';
@@ -155,7 +235,7 @@ export function parseClinicalInstructions(text: string): string {
 
 export function isInstructionText(text: string): boolean {
   const trimmed = text.trim();
-  if (/^(?:\d+\s*[x×]|\b(?:od|bd|tds|tid|bid|hs|sos|qid)\b|\b\d-\d-\d\b|\b\d\s*[x×]\s*\d-\d\b|for\s+\d+\s+days?|x\s*\d+\s*days?)/i.test(trimmed)) {
+  if (/^(?:\d+\s*[x×*]|\b(?:od|bd|tds|tid|bid|hs|sos|qid)\b|\b\d-[\doO]-[\doO]\b|\b\d\s*[x×*]\s*[\doO]-[\doO]\b|for\s+\d+\s+days?|x\s*\d+\s*days?)/i.test(trimmed)) {
     return true;
   }
   if (/^(?:after food|before food|empty stomach|at night|bedtime)$/i.test(trimmed)) {
@@ -168,7 +248,8 @@ export function extractStrength(text: string): string | null {
   const explicit = text.match(/(\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|iu|units?|tablets?|capsules?|%))/i);
   if (explicit) return explicit[1].replace(/\s+/g, '');
 
-  const implicit = text.match(/\b(\d{2,4})\b/);
+  const normalized = text.replace(/(\d+)[oO]/g, '$10').replace(/[oO](\d+)/g, '0$1');
+  const implicit = normalized.match(/\b(\d{2,4})\b/);
   if (implicit) {
     const val = parseInt(implicit[1], 10);
     if (val >= 5 && val <= 1000) {
@@ -184,9 +265,24 @@ export function extractDrugName(text: string): { name: string; isKnown: boolean 
   clean = clean.replace(/[^a-zA-Z0-9\s\-\+\(\)\/]/g, '').trim();
 
   const words = clean.toLowerCase().split(/[\s,.-]+/);
+  // 1. Exact match
   for (const w of words) {
     if (w.length >= 3 && DRUG_DICTIONARY[w]) {
       return { name: DRUG_DICTIONARY[w], isKnown: true };
+    }
+  }
+
+  // 2. Fuzzy match for handwriting OCR typos
+  for (const w of words) {
+    if (w.length >= 4) {
+      for (const [dictKey, canonicalName] of Object.entries(DRUG_DICTIONARY)) {
+        if (dictKey.length >= 4 && Math.abs(dictKey.length - w.length) <= 2) {
+          const dist = levenshteinDistance(w, dictKey);
+          if (dist <= 1 || (w.length >= 6 && dist <= 2)) {
+            return { name: canonicalName, isKnown: true };
+          }
+        }
+      }
     }
   }
 
@@ -220,10 +316,13 @@ export async function processClientPrescriptionOCR(
   onProgress?.('Initializing in-browser Neural OCR engine...');
 
   try {
+    onProgress?.('Enhancing image ink contrast for handwriting recognition...');
+    const preprocessed = await preprocessImageForHandwriting(file);
+
     // Run client-side Tesseract.js directly inside the browser WebWorker
     const worker = await createWorker('eng');
     onProgress?.('Scanning optical document and recognizing characters...');
-    const ret = await worker.recognize(file, {}, { blocks: true });
+    const ret = await worker.recognize(preprocessed, {}, { blocks: true });
     fullText = ret.data.text || '';
 
     if (ret.data.blocks) {

@@ -105,42 +105,46 @@ export async function processGeminiPrescriptionOCR(
   };
 
   const modelsToTry = [
-    'gemini-2.5-flash-lite',
+    'gemini-3.5-flash-lite',
     'gemini-3.8-flash',
     'gemini-flash-latest',
-    'gemini-2.5-flash',
     'gemini-2.5-pro',
   ];
 
   let rawContent: string | null = null;
   let lastErrorMsg = '';
 
-  for (const model of modelsToTry) {
-    onProgress?.(`Invoking ${model} Vision OCR...`);
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  for (let attempt = 0; attempt < 2 && !rawContent; attempt++) {
+    for (const model of modelsToTry) {
+      onProgress?.(`Deciphering handwriting with ${model}...`);
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
 
-      if (response.ok) {
-        const json = await response.json();
-        const content = json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (content) {
-          rawContent = content;
-          break;
+        if (response.ok) {
+          const json = await response.json();
+          const content = json.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (content) {
+            rawContent = content;
+            break;
+          }
+        } else {
+          const errText = await response.text();
+          console.warn(`[Gemini OCR] Model ${model} returned ${response.status}:`, errText);
+          lastErrorMsg = `${model} returned ${response.status}`;
         }
-      } else {
-        const errText = await response.text();
-        console.warn(`[Gemini OCR] Model ${model} returned ${response.status}:`, errText);
-        lastErrorMsg = `${model} returned ${response.status}`;
+      } catch (netErr: any) {
+        console.warn(`[Gemini OCR] Network error on ${model}:`, netErr);
+        lastErrorMsg = netErr?.message || 'Network error';
       }
-    } catch (netErr: any) {
-      console.warn(`[Gemini OCR] Network error on ${model}:`, netErr);
-      lastErrorMsg = netErr?.message || 'Network error';
+    }
+    if (!rawContent && attempt === 0) {
+      await new Promise((r) => setTimeout(r, 800));
     }
   }
 
