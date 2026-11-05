@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
-import { UserCheck, Stethoscope, Sparkles } from 'lucide-react';
+import React from 'react';
+import { UserCheck, Stethoscope } from 'lucide-react';
 import { useMedications } from '../context/MedicationContext';
-import { GeminiSettingsModal } from './GeminiSettingsModal';
 
 export const Navbar: React.FC = () => {
-  const { activePortal, setActivePortal, patient, clinician, counts, geminiApiKey } = useMedications();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const { activePortal, setActivePortal, patient, clinician, counts } = useMedications();
 
   return (
     <header className="sticky top-0 z-40 w-full bg-primary text-white shadow-md border-b border-primary-hover">
@@ -67,26 +65,6 @@ export const Navbar: React.FC = () => {
             </button>
           </div>
 
-          {/* AI Engine Status & Key Modal Trigger */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                geminiApiKey
-                  ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30 hover:bg-emerald-500/30'
-                  : 'bg-white/10 text-white/85 border-white/20 hover:bg-white/15'
-              }`}
-              title="Configure Gemini 1.5 Flash Vision OCR"
-            >
-              <Sparkles className={`h-3.5 w-3.5 ${geminiApiKey ? 'text-emerald-300' : 'text-secondary'}`} />
-              <span className="hidden sm:inline">
-                {geminiApiKey ? 'Gemini 1.5 Vision (Active)' : 'AI OCR Engine'}
-              </span>
-              <span className="sm:hidden">AI OCR</span>
-            </button>
-          </div>
-
           {/* User Context & Credentials */}
           <div className="hidden lg:flex items-center pl-3 border-l border-white/20">
             {activePortal === 'patient' ? (
@@ -114,9 +92,6 @@ export const Navbar: React.FC = () => {
 
         </div>
       </div>
-
-      {/* Cloud AI OCR Engine Settings Modal */}
-      <GeminiSettingsModal open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
     </header>
   );
 };

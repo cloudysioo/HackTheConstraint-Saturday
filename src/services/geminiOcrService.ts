@@ -33,13 +33,15 @@ Return ONLY valid JSON matching this schema:
   ]
 }`;
 
+const BUILTIN_API_KEY = 'AQ.Ab8RN6I_0ng9yD9iWan3j8nLW15minvW8TYJV9haRBW3djJAPg';
+
 export function getStoredGeminiApiKey(): string {
   if (typeof window !== 'undefined') {
     const local = localStorage.getItem('medtrace_gemini_api_key');
     if (local && local.trim().length > 10) return local.trim();
   }
   const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY;
-  return (envKey && envKey.trim()) || '';
+  return (envKey && envKey.trim()) || BUILTIN_API_KEY;
 }
 
 export function setStoredGeminiApiKey(key: string): void {
