@@ -14,6 +14,11 @@ import {
   initialAuditLogs,
 } from '../data/mockData';
 import { processClientPrescriptionOCR } from '../services/clientOcrService';
+import {
+  processGeminiPrescriptionOCR,
+  getStoredGeminiApiKey,
+  setStoredGeminiApiKey,
+} from '../services/geminiOcrService';
 
 interface MedicationContextType {
   medications: Medication[];
@@ -26,6 +31,8 @@ interface MedicationContextType {
   isUploading: boolean;
   uploadProgressText: string;
   rawOcrText?: string;
+  geminiApiKey: string;
+  setGeminiApiKey: (key: string) => void;
   flagMedication: (id: string, discrepancyType: FlagDiscrepancyType, comment: string) => Promise<void>;
   resolveMedication: (
     id: string,
@@ -55,6 +62,12 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgressText, setUploadProgressText] = useState<string>('');
   const [rawOcrText, setRawOcrText] = useState<string | undefined>(undefined);
+  const [geminiApiKey, setGeminiApiKeyState] = useState<string>(getStoredGeminiApiKey());
+
+  const setGeminiApiKey = (key: string) => {
+    setStoredGeminiApiKey(key);
+    setGeminiApiKeyState(key);
+  };
 
   const getFormattedTime = () => {
     return `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -83,61 +96,82 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
   }, []);
 
-  // Upload real file to backend OCR endpoint (with client-side in-browser OCR fallback for Vercel)
+  // Upload prescription file: supports Local Backend (Apple Vision), Gemini 1.5 Flash Vision, and In-Browser OCR
   const uploadPrescriptionFile = async (file: File): Promise<boolean> => {
     setIsUploading(true);
     setUploadProgressText('Processing prescription document...');
 
+    // 1. Try local Express backend if running (e.g. on local Mac with Apple Vision)
     try {
       const formData = new FormData();
       formData.append('prescription', file);
 
-      setUploadProgressText('Running OCR & Entity Extraction...');
+      setUploadProgressText('Connecting to medTrace OCR Engine...');
 
       const response = await fetch('/api/prescriptions/upload', {
         method: 'POST',
         body: formData,
       });
 
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server responded with ${response.status}`);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setDocument(result.document);
+          setMedications(result.medications);
+          if (result.auditLogs) setAuditLogs(result.auditLogs);
+          if (result.rawOcrText) setRawOcrText(result.rawOcrText);
+
+          setIsUploading(false);
+          setUploadProgressText('');
+          return true;
+        }
       }
+    } catch {
+      // Local backend unavailable, move to cloud AI / client engine
+    }
 
-      const result = await response.json();
-
-      if (result.success) {
-        setDocument(result.document);
-        setMedications(result.medications);
-        if (result.auditLogs) setAuditLogs(result.auditLogs);
-        if (result.rawOcrText) setRawOcrText(result.rawOcrText);
-
-        setIsUploading(false);
-        setUploadProgressText('');
-        return true;
-      }
-      throw new Error('Upload succeeded but parsing reported false');
-    } catch (err: any) {
-      console.warn('Backend unavailable (e.g. running on Vercel), switching to in-browser OCR engine:', err);
+    // 2. Try Gemini 1.5 Flash Vision (Apple-level or better handwriting OCR)
+    const effectiveKey = geminiApiKey || getStoredGeminiApiKey();
+    if (effectiveKey && effectiveKey.trim().length > 5) {
       try {
-        const clientResult = await processClientPrescriptionOCR(file, (msg) => {
+        setUploadProgressText('Running Gemini 1.5 Flash Multimodal OCR & Clinical Resolution...');
+        const geminiResult = await processGeminiPrescriptionOCR(file, effectiveKey.trim(), (msg) => {
           setUploadProgressText(msg);
         });
 
-        setDocument(clientResult.document);
-        setMedications(clientResult.medications);
-        setAuditLogs((prev) => [clientResult.auditLog, ...prev]);
-        if (clientResult.rawOcrText) setRawOcrText(clientResult.rawOcrText);
+        setDocument(geminiResult.document);
+        setMedications(geminiResult.medications);
+        setAuditLogs((prev) => [geminiResult.auditLog, ...prev]);
+        if (geminiResult.rawOcrText) setRawOcrText(geminiResult.rawOcrText);
 
         setIsUploading(false);
         setUploadProgressText('');
         return true;
-      } catch (clientErr: any) {
-        console.error('In-browser client OCR error:', clientErr);
-        setIsUploading(false);
-        setUploadProgressText('');
-        return false;
+      } catch (geminiErr: any) {
+        console.warn('Gemini Flash OCR error, falling back to in-browser engine:', geminiErr);
       }
+    }
+
+    // 3. Fallback: In-browser WebAssembly OCR
+    try {
+      setUploadProgressText('Running in-browser Optical Character Recognition...');
+      const clientResult = await processClientPrescriptionOCR(file, (msg) => {
+        setUploadProgressText(msg);
+      });
+
+      setDocument(clientResult.document);
+      setMedications(clientResult.medications);
+      setAuditLogs((prev) => [clientResult.auditLog, ...prev]);
+      if (clientResult.rawOcrText) setRawOcrText(clientResult.rawOcrText);
+
+      setIsUploading(false);
+      setUploadProgressText('');
+      return true;
+    } catch (clientErr: any) {
+      console.error('In-browser client OCR error:', clientErr);
+      setIsUploading(false);
+      setUploadProgressText('');
+      return false;
     }
   };
 
@@ -287,6 +321,8 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isUploading,
         uploadProgressText,
         rawOcrText,
+        geminiApiKey,
+        setGeminiApiKey,
         flagMedication,
         resolveMedication,
         uploadPrescriptionFile,
