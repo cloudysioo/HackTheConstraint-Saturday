@@ -13,6 +13,7 @@ import {
   initialMockMedications,
   initialAuditLogs,
 } from '../data/mockData';
+import { processClientPrescriptionOCR } from '../services/clientOcrService';
 
 interface MedicationContextType {
   medications: Medication[];
@@ -82,16 +83,16 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
   }, []);
 
-  // Upload real file to backend OCR endpoint
+  // Upload real file to backend OCR endpoint (with client-side in-browser OCR fallback for Vercel)
   const uploadPrescriptionFile = async (file: File): Promise<boolean> => {
     setIsUploading(true);
-    setUploadProgressText('Uploading document to medTrace OCR Engine...');
+    setUploadProgressText('Processing prescription document...');
 
     try {
       const formData = new FormData();
       formData.append('prescription', file);
 
-      setUploadProgressText('Running Tesseract Optical Text & Entity Extraction...');
+      setUploadProgressText('Running OCR & Entity Extraction...');
 
       const response = await fetch('/api/prescriptions/upload', {
         method: 'POST',
@@ -117,37 +118,26 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       throw new Error('Upload succeeded but parsing reported false');
     } catch (err: any) {
-      console.warn('Real backend upload error, falling back to local simulation:', err);
-      // Fallback in case backend is offline
-      const timestamp = getFormattedTime();
-      const localUrl = URL.createObjectURL(file);
-      const newDoc: UploadedDocument = {
-        id: `doc-${Date.now()}`,
-        fileName: file.name,
-        fileUrl: localUrl,
-        fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        uploadedAt: timestamp,
-        status: 'EXTRACTED',
-        itemCount: 4,
-      };
-      setDocument(newDoc);
+      console.warn('Backend unavailable (e.g. running on Vercel), switching to in-browser OCR engine:', err);
+      try {
+        const clientResult = await processClientPrescriptionOCR(file, (msg) => {
+          setUploadProgressText(msg);
+        });
 
-      const fallbackEntry: AuditLogEntry = {
-        id: `audit-${Date.now()}`,
-        timestamp,
-        medicationId: 'upload',
-        medicationName: file.name,
-        actor: 'Arjun Sharma (Patient)',
-        role: 'PATIENT',
-        eventType: 'FLAG_CREATED',
-        summary: `Uploaded "${file.name}" for local clinical review.`,
-        details: err?.message || 'Processed through frontend fallback.',
-      };
-      setAuditLogs((prev) => [fallbackEntry, ...prev]);
+        setDocument(clientResult.document);
+        setMedications(clientResult.medications);
+        setAuditLogs((prev) => [clientResult.auditLog, ...prev]);
+        if (clientResult.rawOcrText) setRawOcrText(clientResult.rawOcrText);
 
-      setIsUploading(false);
-      setUploadProgressText('');
-      return true;
+        setIsUploading(false);
+        setUploadProgressText('');
+        return true;
+      } catch (clientErr: any) {
+        console.error('In-browser client OCR error:', clientErr);
+        setIsUploading(false);
+        setUploadProgressText('');
+        return false;
+      }
     }
   };
 
