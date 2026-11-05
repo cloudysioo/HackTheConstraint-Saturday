@@ -72,7 +72,8 @@ const MainAppContent: React.FC = () => {
       <DocumentViewerModal
         isOpen={isViewerModalOpen}
         onClose={() => setIsViewerModalOpen(false)}
-        documentName={document.fileName}
+        documentName={document ? document.fileName : 'Prescription'}
+        documentUrl={document ? document.fileUrl : undefined}
         medications={medications}
         initialActiveMedicationId={viewerActiveMedicationId}
       />

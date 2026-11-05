@@ -25,7 +25,7 @@ import { ProvenanceViewer } from './ProvenanceViewer';
 import { ClinicianAuditLog } from './ClinicianAuditLog';
 
 export const ClinicianDashboard: React.FC = () => {
-  const { medications, counts, patient, clinician } = useMedications();
+  const { medications, counts, patient, clinician, document } = useMedications();
   const [selectedMedForProvenance, setSelectedMedForProvenance] = useState<Medication | null>(null);
   const [isProvenanceModalOpen, setIsProvenanceModalOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'NEEDS_REVIEW' | 'FLAGGED' | 'VERIFIED'>('NEEDS_REVIEW');
@@ -194,7 +194,7 @@ export const ClinicianDashboard: React.FC = () => {
                 Prescription Provenance & Reconciliation Queue
               </CardTitle>
               <CardDescription className="text-xs text-neutral-500">
-                Source Document: <span className="font-mono text-neutral-700 font-semibold">Visit_Oct_2024.pdf</span> (Extracted today)
+                Source Document: <span className="font-mono text-neutral-700 font-semibold">{document ? document.fileName : 'Awaiting Ingestion'}</span>
               </CardDescription>
             </div>
 
@@ -252,8 +252,15 @@ export const ClinicianDashboard: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMedications.map((med) => (
-                <TableRow key={med.id} className="hover:bg-neutral-50/80 transition-colors">
+              {filteredMedications.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-12 text-center text-xs text-neutral-500">
+                    No prescription medications in this triage filter. When a patient uploads a prescription, it will appear here for clinical sign-off.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredMedications.map((med) => (
+                  <TableRow key={med.id} className="hover:bg-neutral-50/80 transition-colors">
                   
                   {/* Medication & Strength */}
                   <TableCell>
@@ -330,7 +337,7 @@ export const ClinicianDashboard: React.FC = () => {
                   </TableCell>
 
                 </TableRow>
-              ))}
+              )))}
             </TableBody>
           </Table>
         </div>

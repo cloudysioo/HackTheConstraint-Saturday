@@ -166,7 +166,12 @@ export const FlagErrorModal: React.FC<FlagErrorModalProps> = ({
                   </div>
 
                   <div className="rounded-xl border border-neutral-200 overflow-hidden bg-neutral-100 max-h-[190px] overflow-y-auto shadow-inner">
-                    <PrescriptionPreview highlightMedicationId={medication.id} compact={true} />
+                    <PrescriptionPreview
+                      highlightMedicationId={medication.id}
+                      compact={true}
+                      documentUrl={medication.sourceUrl}
+                      documentName={medication.sourceDocument}
+                    />
                   </div>
                 </div>
               </div>

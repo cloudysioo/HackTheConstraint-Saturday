@@ -6,12 +6,76 @@ interface PrescriptionPreviewProps {
   highlightMedicationId?: string;
   medications?: Medication[];
   compact?: boolean;
+  documentUrl?: string;
+  documentName?: string;
 }
 
 export const PrescriptionPreview: React.FC<PrescriptionPreviewProps> = ({
   highlightMedicationId,
+  medications = [],
   compact = false,
+  documentUrl,
+  documentName,
 }) => {
+  // If a real uploaded image URL exists, render the real photo with optical bounding box overlays
+  if (documentUrl) {
+    const activeMed = medications.find((m) => m.id === highlightMedicationId);
+
+    return (
+      <div className={`relative w-full rounded-xl border border-neutral-300 bg-neutral-900/5 overflow-hidden select-none ${compact ? 'p-1' : 'p-2'}`}>
+        <div className="w-full flex justify-center bg-white rounded-lg p-1">
+          <div className="relative inline-block overflow-hidden rounded">
+            <img
+              src={documentUrl}
+              alt={documentName || 'Uploaded Prescription Document'}
+              className="w-full h-auto max-h-[650px] object-contain rounded block"
+            />
+
+            {/* Render optical bounding boxes directly over the uploaded document */}
+            {medications.map((med) => {
+              if (!med.boundingBox) return null;
+              const isHighlighted = highlightMedicationId === med.id;
+              return (
+                <div
+                  key={med.id}
+                  style={{
+                    top: `${med.boundingBox.top}%`,
+                    left: `${med.boundingBox.left}%`,
+                    width: `${med.boundingBox.width}%`,
+                    height: `${med.boundingBox.height}%`,
+                  }}
+                  className={`absolute rounded transition-all cursor-pointer ${
+                    isHighlighted
+                      ? 'bg-yellow-300/45 border-2 border-yellow-500 ring-2 ring-yellow-400/40 z-20'
+                      : 'bg-yellow-200/20 border border-yellow-400/60 hover:bg-yellow-300/30 z-10'
+                  }`}
+                >
+                  {isHighlighted && (
+                    <div className="absolute -top-5 left-0 bg-yellow-400 text-neutral-900 font-sans text-[10px] font-bold px-1.5 py-0.2 rounded shadow whitespace-nowrap">
+                      {med.name} ({med.strength})
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {activeMed && (
+          <div className="mt-2 px-2 py-1 bg-white border border-neutral-200 rounded text-[11px] flex items-center justify-between font-sans">
+            <span className="font-semibold text-neutral-800">
+              Selected: {activeMed.name} • {activeMed.strength}
+            </span>
+            <span className="text-neutral-500 text-[10px]">
+              Confidence: {activeMed.confidence || 96}%
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Fallback: Scanned Clinical Prescription Pad Replica
   return (
     <div
       className={`relative w-full rounded-xl border border-neutral-300 bg-[#FCFBF8] text-neutral-800 shadow-inner overflow-hidden select-none font-serif ${
@@ -61,7 +125,7 @@ export const PrescriptionPreview: React.FC<PrescriptionPreviewProps> = ({
         </div>
         <div>
           <span className="text-neutral-500">Source Scan: </span>
-          <span className="font-medium text-neutral-800">Visit_Oct_2024.pdf</span>
+          <span className="font-medium text-neutral-800">{documentName || 'Visit_Oct_2024.pdf'}</span>
         </div>
       </div>
 

@@ -38,6 +38,8 @@ export interface Medication {
   instructions: string;
   sourceDocument: string;
   source?: string;
+  sourceUrl?: string;
+  confidence?: number;
   status: MedicationStatus;
   boundingBox?: BoundingBox;
   patientFlagNote?: string;
@@ -53,6 +55,7 @@ export interface Medication {
 export interface UploadedDocument {
   id: string;
   fileName: string;
+  fileUrl?: string;
   fileSize: string;
   uploadedAt: string;
   status: 'EXTRACTED' | 'PROCESSING' | 'ERROR';

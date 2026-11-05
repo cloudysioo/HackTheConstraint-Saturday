@@ -141,7 +141,12 @@ export const ProvenanceViewer: React.FC<ProvenanceViewerProps> = ({
             </div>
 
             <div className="rounded-xl border border-neutral-200 overflow-hidden bg-neutral-100 max-h-[460px] overflow-y-auto shadow-inner">
-              <PrescriptionPreview highlightMedicationId={medication.id} compact={true} />
+              <PrescriptionPreview
+                highlightMedicationId={medication.id}
+                compact={true}
+                documentUrl={medication.sourceUrl}
+                documentName={medication.sourceDocument}
+              />
             </div>
             <p className="text-[11px] text-neutral-500 italic">
               Source file: {medication.sourceDocument || 'Visit_Oct_2024.pdf'} • Tamper-evident scan hash verified.

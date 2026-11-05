@@ -15,6 +15,7 @@ interface DocumentViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   documentName: string;
+  documentUrl?: string;
   medications: Medication[];
   initialActiveMedicationId?: string;
 }
@@ -23,6 +24,7 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   isOpen,
   onClose,
   documentName,
+  documentUrl,
   medications,
   initialActiveMedicationId,
 }) => {
@@ -144,6 +146,8 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
               highlightMedicationId={activeMedicationId}
               medications={medications}
               compact={false}
+              documentUrl={documentUrl}
+              documentName={documentName}
             />
           </div>
         </div>
