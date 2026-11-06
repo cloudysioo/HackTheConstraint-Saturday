@@ -264,10 +264,13 @@ export const ClinicianDashboard: React.FC = () => {
                   
                   {/* Medication & Strength */}
                   <TableCell>
-                    <div className="font-bold text-neutral-900 text-sm">{med.name}</div>
-                    <div className="mt-1">
+                    <div className="font-bold text-neutral-900 text-sm">{med.medicineName || med.name}</div>
+                    <div className="mt-1 flex items-center gap-1.5">
                       <span className="font-mono text-xs font-bold bg-neutral-100 text-neutral-800 px-2 py-0.5 rounded border border-neutral-200">
                         {med.strength}
+                      </span>
+                      <span className="font-mono text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full inline-block">
+                        {med.timesPerDay || 1}x / day
                       </span>
                     </div>
                   </TableCell>

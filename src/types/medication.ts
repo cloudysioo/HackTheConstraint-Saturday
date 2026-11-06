@@ -31,10 +31,18 @@ export interface ClinicianResolution {
   };
 }
 
+export interface AntiGravityExtractionResult {
+  medicineName: string; // The combined name and dosage strength of the drug
+  timesPerDay: number;  // The calculated raw daily frequency count
+}
+
 export interface Medication {
   id: string;
+  medicineName?: string; // Strict Anti-Gravity extraction: combined name & strength
   name: string;
   strength: string;
+  timesPerDay: number;   // Strict integer count of daily intake frequency
+  frequencyPerDay?: number; // Alias for timesPerDay
   instructions: string;
   sourceDocument: string;
   source?: string;
