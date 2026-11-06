@@ -1,6 +1,6 @@
 
 # MedTrace
-*Flag, Never Decide.*
+*Flag it, Never Decide.*
 
 **Medication continuity and safe handover across every patient visit.**
  
