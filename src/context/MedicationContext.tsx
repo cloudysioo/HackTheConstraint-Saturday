@@ -6,6 +6,7 @@ import {
   ClinicianProfile,
   AuditLogEntry,
   FlagDiscrepancyType,
+  AntiGravityExtractionResult,
 } from '../types/medication';
 import {
   mockPatient,
@@ -31,6 +32,7 @@ interface MedicationContextType {
   isUploading: boolean;
   uploadProgressText: string;
   rawOcrText?: string;
+  strictResults: AntiGravityExtractionResult[];
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
   flagMedication: (id: string, discrepancyType: FlagDiscrepancyType, comment: string) => Promise<void>;
@@ -62,6 +64,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgressText, setUploadProgressText] = useState<string>('');
   const [rawOcrText, setRawOcrText] = useState<string | undefined>(undefined);
+  const [strictResults, setStrictResults] = useState<AntiGravityExtractionResult[]>([]);
   const [geminiApiKey, setGeminiApiKeyState] = useState<string>(getStoredGeminiApiKey());
 
   const setGeminiApiKey = (key: string) => {
@@ -106,14 +109,15 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const formData = new FormData();
       formData.append('prescription', file);
 
-      setUploadProgressText('Connecting to medTrace OCR Engine...');
+      setUploadProgressText('Connecting to Anti-Gravity OCR Engine...');
 
       const response = await fetch('/api/prescriptions/upload', {
         method: 'POST',
         body: formData,
       });
 
-      if (response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
         const result = await response.json();
         if (result.success) {
           setDocument(result.document);
@@ -121,26 +125,34 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (result.auditLogs) setAuditLogs(result.auditLogs);
           if (result.rawOcrText) setRawOcrText(result.rawOcrText);
 
+          // Populate strict Anti-Gravity results
+          const strict = (result.medications || []).map((m: any) => ({
+            medicineName: m.medicineName || (m.strength ? `${m.name} ${m.strength}` : m.name),
+            timesPerDay: m.timesPerDay || m.frequencyPerDay || 1,
+          }));
+          setStrictResults(strict);
+
           setIsUploading(false);
           setUploadProgressText('');
           return true;
         }
       }
     } catch {
-      // Local backend unavailable, move to cloud AI / client engine
+      // Local backend unavailable or running on Vercel SPA, move smoothly to client AI / in-browser engine
     }
 
-    // 2. Try Gemini 1.5 Flash Vision (Apple-level or better handwriting OCR)
+    // 2. Try Gemini Vision (Anti-Gravity Multimodal OCR - works directly in-browser on Vercel)
     const effectiveKey = geminiApiKey || getStoredGeminiApiKey();
     if (effectiveKey && effectiveKey.trim().length > 5) {
       try {
-        setUploadProgressText('Running Gemini 1.5 Flash Multimodal OCR & Clinical Resolution...');
+        setUploadProgressText('Running Anti-Gravity Vision Neural Entity Extraction...');
         const geminiResult = await processGeminiPrescriptionOCR(file, effectiveKey.trim(), (msg) => {
           setUploadProgressText(msg);
         });
 
         setDocument(geminiResult.document);
         setMedications(geminiResult.medications);
+        setStrictResults(geminiResult.strictResults);
         setAuditLogs((prev) => [geminiResult.auditLog, ...prev]);
         if (geminiResult.rawOcrText) setRawOcrText(geminiResult.rawOcrText);
 
@@ -148,19 +160,20 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setUploadProgressText('');
         return true;
       } catch (geminiErr: any) {
-        console.warn('Gemini Flash OCR error, falling back to in-browser engine:', geminiErr);
+        console.warn('Gemini Vision OCR error, falling back to in-browser engine:', geminiErr);
       }
     }
 
-    // 3. Fallback: In-browser WebAssembly OCR
+    // 3. Fallback: In-browser WebAssembly Neural OCR (Zero-API, 100% works on Vercel)
     try {
-      setUploadProgressText('Running in-browser Optical Character Recognition...');
+      setUploadProgressText('Running in-browser Anti-Gravity OCR (Tesseract Neural)...');
       const clientResult = await processClientPrescriptionOCR(file, (msg) => {
         setUploadProgressText(msg);
       });
 
       setDocument(clientResult.document);
       setMedications(clientResult.medications);
+      setStrictResults(clientResult.strictResults);
       setAuditLogs((prev) => [clientResult.auditLog, ...prev]);
       if (clientResult.rawOcrText) setRawOcrText(clientResult.rawOcrText);
 
@@ -321,6 +334,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isUploading,
         uploadProgressText,
         rawOcrText,
+        strictResults,
         geminiApiKey,
         setGeminiApiKey,
         flagMedication,

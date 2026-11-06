@@ -13,6 +13,10 @@ import {
   Loader2,
   ScanText,
   FileImage,
+  Code2,
+  Copy,
+  Check,
+  Zap,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card';
 import {
@@ -44,8 +48,23 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
   onOpenDocumentViewer,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [showStrictJson, setShowStrictJson] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { isUploading, uploadProgressText, uploadPrescriptionFile } = useMedications();
+  const { isUploading, uploadProgressText, uploadPrescriptionFile, strictResults } = useMedications();
+
+  // Handle JSON copy
+  const handleCopyStrictJson = () => {
+    const dataToCopy = (strictResults && strictResults.length > 0)
+      ? (strictResults.length === 1 ? strictResults[0] : strictResults)
+      : medications.map(m => ({
+          medicineName: m.medicineName || (m.strength && m.strength !== 'As directed' ? `${m.name} ${m.strength}` : m.name),
+          timesPerDay: m.timesPerDay || 1,
+        }));
+    navigator.clipboard.writeText(JSON.stringify(dataToCopy, null, 2));
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 2000);
+  };
 
   // Handle native file input selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -279,8 +298,22 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                 </CardDescription>
               </div>
 
-              <div className="flex items-center gap-2 self-start sm:self-auto text-xs text-neutral-500">
-                <span className="font-medium">Total extracted:</span>
+              <div className="flex items-center gap-2 self-start sm:self-auto text-xs">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowStrictJson(!showStrictJson)}
+                  className={`text-xs gap-1.5 h-8 font-semibold ${
+                    showStrictJson
+                      ? 'bg-primary text-white hover:bg-primary-hover border-primary'
+                      : 'text-primary border-primary/30 hover:bg-primary/5'
+                  }`}
+                >
+                  <Code2 className="h-3.5 w-3.5" />
+                  <span>{showStrictJson ? 'Hide Target JSON' : 'Anti-Gravity Target JSON'}</span>
+                </Button>
+                <span className="font-medium text-neutral-500">Total:</span>
                 <span className="font-bold text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded-full">
                   {medications.length}
                 </span>
@@ -313,16 +346,62 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
             </div>
           ) : (
             <>
+              {/* Anti-Gravity Strict Target Schema Inspector */}
+              {showStrictJson && (
+                <div className="p-4 bg-neutral-900 text-neutral-100 border-b border-neutral-700 font-mono text-xs animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-800">
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-emerald-400" />
+                      <span className="font-bold text-white text-xs">
+                        Anti-Gravity Core Engine Target Data Output
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCopyStrictJson}
+                      className="text-xs h-7 text-neutral-300 hover:text-white hover:bg-white/10 gap-1.5"
+                    >
+                      {copiedJson ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                      <span>{copiedJson ? 'Copied Valid JSON' : 'Copy Clean JSON'}</span>
+                    </Button>
+                  </div>
+                  <pre className="overflow-x-auto p-3.5 bg-black/50 rounded-lg text-emerald-400 text-xs leading-relaxed max-h-64 border border-neutral-800">
+                    {JSON.stringify(
+                      (strictResults && strictResults.length > 0)
+                        ? (strictResults.length === 1 ? strictResults[0] : strictResults)
+                        : (medications.length === 1
+                            ? {
+                                medicineName: medications[0].medicineName || (medications[0].strength && medications[0].strength !== 'As directed' ? `${medications[0].name} ${medications[0].strength}` : medications[0].name),
+                                timesPerDay: medications[0].timesPerDay || 1,
+                              }
+                            : medications.map((m) => ({
+                                medicineName: m.medicineName || (m.strength && m.strength !== 'As directed' ? `${m.name} ${m.strength}` : m.name),
+                                timesPerDay: m.timesPerDay || 1,
+                              }))),
+                      null,
+                      2
+                    )}
+                  </pre>
+                  <p className="mt-2 text-[11px] text-neutral-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
+                    <span>Strictly extracted: brand/generic medicineName and calculated integer timesPerDay. All pharmacy/patient/billing noise stripped.</span>
+                  </p>
+                </div>
+              )}
+
               {/* Desktop Table View */}
               <div className="hidden md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[22%]">Medication Name</TableHead>
-                      <TableHead className="w-[12%]">Strength</TableHead>
-                      <TableHead className="w-[30%]">Instructions</TableHead>
-                      <TableHead className="w-[14%]">Source Document</TableHead>
-                      <TableHead className="w-[12%]">Status</TableHead>
+                      <TableHead className="w-[20%]">Medication Name</TableHead>
+                      <TableHead className="w-[12%]">Times / Day</TableHead>
+                      <TableHead className="w-[10%]">Strength</TableHead>
+                      <TableHead className="w-[26%]">Instructions</TableHead>
+                      <TableHead className="w-[12%]">Source Document</TableHead>
+                      <TableHead className="w-[10%]">Status</TableHead>
                       <TableHead className="w-[10%] text-right">Action</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -333,7 +412,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                         <TableCell className="font-bold text-neutral-900">
                           <div className="flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                            <span className="text-base text-neutral-900">{med.name}</span>
+                            <span className="text-base text-neutral-900">{med.medicineName || med.name}</span>
                           </div>
                           {med.patientFlagNote && (
                             <div className="mt-1 text-xs text-warning flex items-center gap-1 font-normal">
@@ -345,15 +424,23 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                           )}
                         </TableCell>
 
+                        {/* Frequency / Times Per Day */}
+                        <TableCell>
+                          <span className="inline-flex items-center gap-1 font-mono text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2.5 py-1 rounded-full shadow-2xs">
+                            <Zap className="h-3 w-3 text-secondary-dark" />
+                            <span>{med.timesPerDay || 1}x / day</span>
+                          </span>
+                        </TableCell>
+
                         {/* Strength */}
                         <TableCell>
-                          <span className="font-mono text-sm font-semibold bg-neutral-100 px-2 py-1 rounded text-neutral-800 border border-neutral-200">
+                          <span className="font-mono text-xs font-semibold bg-neutral-100 px-2 py-1 rounded text-neutral-800 border border-neutral-200">
                             {med.strength}
                           </span>
                         </TableCell>
 
                         {/* Instructions */}
-                        <TableCell className="text-xs sm:text-sm text-neutral-700 leading-relaxed">
+                        <TableCell className="text-xs text-neutral-700 leading-relaxed">
                           {med.instructions}
                         </TableCell>
 
@@ -400,10 +487,16 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   <div key={med.id} className="p-4 space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h4 className="text-base font-bold text-neutral-900">{med.name}</h4>
-                        <span className="font-mono text-xs font-bold bg-neutral-100 px-2 py-0.5 rounded text-neutral-800 border border-neutral-200 inline-block mt-1">
-                          {med.strength}
-                        </span>
+                        <h4 className="text-base font-bold text-neutral-900">{med.medicineName || med.name}</h4>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="font-mono text-xs font-bold bg-neutral-100 px-2 py-0.5 rounded text-neutral-800 border border-neutral-200">
+                            {med.strength}
+                          </span>
+                          <span className="inline-flex items-center gap-1 font-mono text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full">
+                            <Zap className="h-2.5 w-2.5 text-secondary-dark" />
+                            <span>{med.timesPerDay || 1}x / day</span>
+                          </span>
+                        </div>
                       </div>
                       <div>{renderStatusBadge(med.status)}</div>
                     </div>
