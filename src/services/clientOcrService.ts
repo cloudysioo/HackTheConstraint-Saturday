@@ -1,5 +1,6 @@
 import { createWorker } from 'tesseract.js';
-import { Medication, UploadedDocument, AuditLogEntry } from '../types/medication';
+import { Medication, UploadedDocument, AuditLogEntry, AntiGravityExtractionResult } from '../types/medication';
+import { parseFrequencyPerDay } from './frequencyParser';
 
 // Comprehensive Drug Dictionary (Indian & Global Clinical Practice)
 const DRUG_DICTIONARY: Record<string, string> = {
@@ -295,11 +296,32 @@ export function extractDrugName(text: string): { name: string; isKnown: boolean 
   return { name: titleCased || text, isKnown: false };
 }
 
+export function isExtraneousNonMedicineText(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 2) return true;
+
+  // Patient names and demographic details
+  if (/\b(?:patient|mrn|reg\s*no|ip\s*no|ward|pat\.?\s*name|age\s*:\s*\d+|dob\s*:|gender|male|female)\b/i.test(t)) return true;
+  if (/^(?:mr|mrs|ms|master|dr)\.?\s+[a-z\s]+$/i.test(t)) return true;
+
+  // Doctor & Clinic details
+  if (/\b(?:dr\.?|m\.d\.?|mbbs|physician|consultant|hospital|clinic|healthcare|medical\s*center|avenue|suite|street|road|tel\s*:|phone|contact|npi\s*:|signature|stamp)\b/i.test(t)) return true;
+
+  // Billing, financial, pharmacy administrative & barcodes
+  if (/\b(?:credit\s*bill|bill\s*date|invoice|gst|cgst|sgst|amount|discount|mrp|mbp|round\s*off|total|grand\s*total|net\s*pay|paid|balance|batch|exp\.?\s*dt|expiry|mfg|manufacture|pkg|bar\s*code|qr\s*code|refill|refills|pharmacy|pharmacist|billed\s*by|checked\s*by|taken\s*by|page\s*\d+)\b/i.test(t)) return true;
+
+  // General non-medicine headers
+  if (/^(?:rx\/?|prescribed\s*medications?|diagnosis|symptoms|chief\s*complaints?|follow\s*up|investigations?|vitals?|bp\s*:|pulse\s*:|description)$/i.test(t)) return true;
+
+  return false;
+}
+
 export interface ClientOCRResult {
   document: UploadedDocument;
   medications: Medication[];
   auditLog: AuditLogEntry;
   rawOcrText: string;
+  strictResults: AntiGravityExtractionResult[];
 }
 
 export async function processClientPrescriptionOCR(
@@ -319,8 +341,15 @@ export async function processClientPrescriptionOCR(
     onProgress?.('Enhancing image ink contrast for handwriting recognition...');
     const preprocessed = await preprocessImageForHandwriting(file);
 
-    // Run client-side Tesseract.js directly inside the browser WebWorker
-    const worker = await createWorker('eng');
+    // Run client-side Tesseract.js directly inside the browser WebWorker with local/CDN fallback for Vercel
+    let worker;
+    try {
+      worker = await createWorker('eng', 1, {
+        langPath: typeof window !== 'undefined' ? `${window.location.origin}/tessdata` : '/tessdata',
+      });
+    } catch {
+      worker = await createWorker('eng');
+    }
     onProgress?.('Scanning optical document and recognizing characters...');
     const ret = await worker.recognize(preprocessed, {}, { blocks: true });
     fullText = ret.data.text || '';
@@ -359,12 +388,12 @@ export async function processClientPrescriptionOCR(
 
   onProgress?.('Extracting clinical entities & verifying dosages...');
 
-  // Clinical Entity Resolution
+  // Clinical Entity Resolution - Apply Rigid Adaptive Stripping of all extraneous hospital/billing/patient data
   const medications: Medication[] = [];
   const nonHeaderLines = rawLines.filter((line) => {
     const text = line.text;
     if (!text || text.length < 2) return false;
-    return !/clinic|hospital|doctor|avenue|tel:|date:|diagnosis|consultant|signature/i.test(text);
+    return !isExtraneousNonMedicineText(text);
   });
 
   const instructionLines: Array<{ text: string; line: typeof rawLines[0] }> = [];
@@ -405,6 +434,14 @@ export async function processClientPrescriptionOCR(
         }
       }
 
+      // Convert dosage frequency phrase to strict integer count
+      const timesPerDay = parseFrequencyPerDay(instructions || text);
+
+      // Form combined medicine name + strength
+      const medicineName = strength !== 'As directed' && !drugName.toLowerCase().includes(strength.toLowerCase())
+        ? `${drugName} ${strength}`
+        : drugName;
+
       let conflictDetails: Medication['conflictDetails'] = undefined;
       let status: Medication['status'] = 'PENDING';
 
@@ -419,8 +456,11 @@ export async function processClientPrescriptionOCR(
 
       medications.push({
         id: `med-${Date.now()}-${medIdx}`,
+        medicineName,
         name: drugName,
         strength,
+        timesPerDay,
+        frequencyPerDay: timesPerDay,
         instructions,
         status,
         sourceDocument: file.name,
@@ -437,14 +477,22 @@ export async function processClientPrescriptionOCR(
     }
   });
 
-  // Fallback: If no medications extracted, provide structured entries from recognized text or clear prompt
+  // Fallback: If no medications extracted, provide structured entries from recognized text
   if (medications.length === 0) {
-    if (rawLines.length > 0) {
-      rawLines.slice(0, 3).forEach((l, idx) => {
+    if (nonHeaderLines.length > 0) {
+      nonHeaderLines.slice(0, 3).forEach((l, idx) => {
+        const strength = extractStrength(l.text) || 'As directed';
+        const name = l.text.split(/[-–—:]/)[0].trim() || `Prescription Item ${idx + 1}`;
+        const timesPerDay = parseFrequencyPerDay(l.text);
+        const medicineName = strength !== 'As directed' && !name.includes(strength) ? `${name} ${strength}` : name;
+
         medications.push({
           id: `med-${Date.now()}-${idx}`,
-          name: l.text.split(' ')[0] || `Prescription Item ${idx + 1}`,
-          strength: extractStrength(l.text) || 'As directed',
+          medicineName,
+          name,
+          strength,
+          timesPerDay,
+          frequencyPerDay: timesPerDay,
           instructions: parseClinicalInstructions(l.text),
           status: 'PENDING',
           sourceDocument: file.name,
@@ -462,8 +510,11 @@ export async function processClientPrescriptionOCR(
       // Default clean extracted items
       medications.push({
         id: `med-${Date.now()}-0`,
+        medicineName: 'Prescription Item (Handwritten)',
         name: 'Prescription Item (Handwritten)',
         strength: 'As directed',
+        timesPerDay: 1,
+        frequencyPerDay: 1,
         instructions: 'Dose unclear on handwritten prescription - Flagged for clinician verification',
         status: 'PENDING',
         sourceDocument: file.name,
@@ -473,6 +524,11 @@ export async function processClientPrescriptionOCR(
       });
     }
   }
+
+  const strictResults: AntiGravityExtractionResult[] = medications.map((m) => ({
+    medicineName: m.medicineName || `${m.name} ${m.strength}`,
+    timesPerDay: m.timesPerDay,
+  }));
 
   const document: UploadedDocument = {
     id: `doc-${Date.now()}`,
@@ -501,5 +557,6 @@ export async function processClientPrescriptionOCR(
     medications,
     auditLog,
     rawOcrText: fullText,
+    strictResults,
   };
 }

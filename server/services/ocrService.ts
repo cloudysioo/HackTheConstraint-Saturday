@@ -3,10 +3,15 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { createWorker } from 'tesseract.js';
 
+import { parseFrequencyPerDay } from './frequencyParser';
+
 export interface ExtractedMedItem {
   id: string;
+  medicineName?: string;
   name: string;
   strength: string;
+  timesPerDay: number;
+  frequencyPerDay?: number;
   instructions: string;
   status: 'PENDING' | 'VERIFIED' | 'PATIENT_FLAGGED' | 'CONFLICT';
   sourceDocument: string;
@@ -388,10 +393,18 @@ export async function processPrescriptionOCR(
         };
       }
 
+      const timesPerDay = parseFrequencyPerDay(instructions || text);
+      const medicineName = strength !== 'As directed' && !drugName.toLowerCase().includes(strength.toLowerCase())
+        ? `${drugName} ${strength}`
+        : drugName;
+
       medications.push({
         id: `med-${Date.now()}-${cand.lineIndex}`,
+        medicineName,
         name: drugName,
         strength,
+        timesPerDay,
+        frequencyPerDay: timesPerDay,
         instructions,
         status,
         sourceDocument: fileName,
@@ -412,10 +425,17 @@ export async function processPrescriptionOCR(
   if (medications.length === 0 && rawLines.length > 0) {
     const candidates = rawLines.filter((l) => l.text.length > 4 && !/the forgotten prescription|medtrace|saturday|visit/i.test(l.text)).slice(0, 4);
     candidates.forEach((l, idx) => {
+      const strength = extractStrength(l.text) || 'As directed';
+      const name = l.text.split(' ')[0] || `Item ${idx + 1}`;
+      const timesPerDay = parseFrequencyPerDay(l.text);
+      const medicineName = strength !== 'As directed' ? `${name} ${strength}` : name;
       medications.push({
         id: `med-${Date.now()}-${idx}`,
-        name: l.text.split(' ')[0] || `Item ${idx + 1}`,
-        strength: extractStrength(l.text) || 'As directed',
+        medicineName,
+        name,
+        strength,
+        timesPerDay,
+        frequencyPerDay: timesPerDay,
         instructions: parseClinicalInstructions(l.text),
         status: 'PENDING',
         sourceDocument: fileName,
