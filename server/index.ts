@@ -6,6 +6,14 @@ import fs from 'fs';
 import nodemailer from 'nodemailer';
 import { processPrescriptionOCR, ExtractedMedItem } from './services/ocrService';
 import { sendOtpEmail } from './emailService';
+import {
+  mockDoctors,
+  mockPatients,
+  initialMockMedications,
+  initialAuditLogs,
+} from '../src/data/mockData';
+import { initialAuthUsers } from '../src/data/mockUsers';
+import { initialSeedComparisons } from '../src/services/dbService';
 
 // Process-level crash prevention
 process.on('uncaughtException', (err) => {
@@ -54,11 +62,14 @@ const upload = multer({
   },
 });
 
-// Clean state with persistent data store
-let currentMedications: ExtractedMedItem[] = [];
+// Shared state with file-backed persistence for cross-device synchronization
+let currentMedications: any[] = [...initialMockMedications];
 let currentDocument: any = null;
-let auditLogs: any[] = [];
-let comparisonReports: any[] = [];
+let auditLogs: any[] = [...initialAuditLogs];
+let comparisonReports: any[] = [...initialSeedComparisons];
+let patientsList: any[] = [...mockPatients];
+let doctorsDirectory: any[] = [...mockDoctors];
+let registeredUsers: any[] = [...initialAuthUsers];
 
 // File-backed persistence helper
 const DB_FILE = path.resolve(process.cwd(), 'server/data/database.json');
@@ -66,10 +77,13 @@ try {
   if (fs.existsSync(DB_FILE)) {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed.medications)) currentMedications = parsed.medications;
+    if (Array.isArray(parsed.medications) && parsed.medications.length > 0) currentMedications = parsed.medications;
     if (parsed.document) currentDocument = parsed.document;
-    if (Array.isArray(parsed.auditLogs)) auditLogs = parsed.auditLogs;
-    if (Array.isArray(parsed.comparisonReports)) comparisonReports = parsed.comparisonReports;
+    if (Array.isArray(parsed.auditLogs) && parsed.auditLogs.length > 0) auditLogs = parsed.auditLogs;
+    if (Array.isArray(parsed.comparisonReports) && parsed.comparisonReports.length > 0) comparisonReports = parsed.comparisonReports;
+    if (Array.isArray(parsed.patients) && parsed.patients.length > 0) patientsList = parsed.patients;
+    if (Array.isArray(parsed.doctors) && parsed.doctors.length > 0) doctorsDirectory = parsed.doctors;
+    if (Array.isArray(parsed.users) && parsed.users.length > 0) registeredUsers = parsed.users;
   }
 } catch (e) {
   console.warn('[DB File] Could not load database.json:', e);
@@ -77,6 +91,8 @@ try {
 
 function persistDb() {
   try {
+    const dir = path.dirname(DB_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
       DB_FILE,
       JSON.stringify({
@@ -84,6 +100,9 @@ function persistDb() {
         document: currentDocument,
         auditLogs,
         comparisonReports,
+        patients: patientsList,
+        doctors: doctorsDirectory,
+        users: registeredUsers,
       }, null, 2)
     );
   } catch (e) {
@@ -91,14 +110,462 @@ function persistDb() {
   }
 }
 
+// Initial write to ensure file exists
+persistDb();
+
 // Health Check
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'medTrace OCR Engine',
     medicationsCount: currentMedications.length,
+    patientsCount: patientsList.length,
     timestamp: new Date().toISOString(),
   });
+});
+
+// ── PATIENTS & CARE TEAM (CROSS-DEVICE SYNC) ─────────────────
+
+// GET all patients
+app.get('/api/patients', (_req, res) => {
+  res.json({
+    success: true,
+    patients: patientsList,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// POST register / sync a patient profile
+app.post('/api/patients/sync', (req, res) => {
+  const patient = req.body;
+  if (!patient || !patient.id) {
+    return res.status(400).json({ error: 'Patient object with id is required' });
+  }
+  const idx = patientsList.findIndex((p) => p.id === patient.id);
+  if (idx >= 0) {
+    patientsList[idx] = { ...patientsList[idx], ...patient };
+  } else {
+    patientsList.unshift(patient);
+  }
+  persistDb();
+  res.json({ success: true, patients: patientsList });
+});
+
+// POST Patient requests doctor to join care team (Waiting for Approval)
+app.post('/api/patients/care-team/request', (req, res) => {
+  const { patientId, doctor, actor } = req.body;
+  if (!patientId || !doctor || !doctor.name) {
+    return res.status(400).json({ error: 'patientId and doctor are required.' });
+  }
+
+  const timestamp = `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const pendingDoctor = {
+    ...doctor,
+    approvalStatus: 'PENDING_APPROVAL',
+    requestedAt: timestamp,
+  };
+
+  let patientFound = false;
+  patientsList = patientsList.map((p) => {
+    if (p.id === patientId) {
+      patientFound = true;
+      const careTeam = p.careTeam || [];
+      const exists = careTeam.some(
+        (d: any) =>
+          d.id === doctor.id ||
+          (d.doctorId && doctor.doctorId && d.doctorId === doctor.doctorId) ||
+          d.name.toLowerCase() === doctor.name.toLowerCase()
+      );
+      if (exists) {
+        return {
+          ...p,
+          careTeam: careTeam.map((d: any) =>
+            d.id === doctor.id ||
+            (d.doctorId && doctor.doctorId && d.doctorId === doctor.doctorId) ||
+            d.name.toLowerCase() === doctor.name.toLowerCase()
+              ? { ...d, ...pendingDoctor }
+              : d
+          ),
+        };
+      }
+      return {
+        ...p,
+        careTeam: [...careTeam, pendingDoctor],
+      };
+    }
+    return p;
+  });
+
+  if (!patientFound) {
+    patientsList.unshift({
+      id: patientId,
+      name: actor || 'Patient User',
+      dob: '1985-05-15',
+      doctor: 'Dr. Rajesh Iyer, MD',
+      clinic: 'Metro Health Primary Care',
+      phone: '(555) 019-2810',
+      careTeam: [mockDoctors[0], pendingDoctor],
+      allergies: [],
+      conditions: ['Primary Care Evaluation'],
+    });
+  }
+
+  // Ensure doctor is in directory
+  if (!doctorsDirectory.some((d: any) => d.name.toLowerCase() === doctor.name.toLowerCase())) {
+    doctorsDirectory.push(pendingDoctor);
+  }
+
+  const auditLog = {
+    id: `audit-${Date.now()}`,
+    patientId,
+    timestamp,
+    medicationId: doctor.id || 'care-team',
+    medicationName: 'Care Team Request',
+    actor: actor || 'Patient',
+    role: 'PATIENT',
+    eventType: 'FLAG_CREATED',
+    summary: `Requested ${doctor.name} (${doctor.specialty}) to join care team — Waiting for doctor approval`,
+    details: `Co-managing clinic: ${doctor.clinic || 'Specialist Clinic'}. Request dispatched across devices to doctor queue.`,
+  };
+  auditLogs = [auditLog, ...auditLogs];
+
+  persistDb();
+  console.log(`[Care Team Cross-Device] Request sent: ${doctor.name} for patient ${patientId}`);
+
+  res.json({
+    success: true,
+    patients: patientsList,
+    doctor: pendingDoctor,
+    auditLogs,
+  });
+});
+
+// POST Doctor approves patient's linking request
+app.post('/api/patients/care-team/approve', (req, res) => {
+  const { patientId, doctorId, actor } = req.body;
+  if (!patientId || !doctorId) {
+    return res.status(400).json({ error: 'patientId and doctorId are required.' });
+  }
+
+  const timestamp = `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  let approvedDocName = '';
+
+  patientsList = patientsList.map((p) => {
+    if (p.id === patientId) {
+      return {
+        ...p,
+        careTeam: (p.careTeam || []).map((d: any) => {
+          if (
+            d.id === doctorId ||
+            d.doctorId === doctorId ||
+            d.name === doctorId ||
+            (d.registrationNumber && d.registrationNumber === doctorId)
+          ) {
+            approvedDocName = d.name;
+            return { ...d, approvalStatus: 'APPROVED' };
+          }
+          return d;
+        }),
+      };
+    }
+    return p;
+  });
+
+  const auditLog = {
+    id: `audit-${Date.now()}`,
+    patientId,
+    timestamp,
+    medicationId: doctorId,
+    medicationName: approvedDocName || 'Consulting Doctor',
+    actor: actor || 'Attending Physician',
+    role: 'CLINICIAN',
+    eventType: 'EXTRACTION_APPROVED',
+    summary: `Doctor approved care team request: ${approvedDocName || 'Specialist'} is now an active co-managing clinician.`,
+    details: `Care team link activated for closed-loop prescription reconciliation across devices.`,
+  };
+  auditLogs = [auditLog, ...auditLogs];
+
+  persistDb();
+  console.log(`[Care Team Cross-Device] Approved: ${approvedDocName} for patient ${patientId}`);
+
+  res.json({
+    success: true,
+    patients: patientsList,
+    approvedDoctorName: approvedDocName,
+    auditLogs,
+  });
+});
+
+// POST Doctor declines patient care team request
+app.post('/api/patients/care-team/reject', (req, res) => {
+  const { patientId, doctorId, actor } = req.body;
+  const timestamp = `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+  patientsList = patientsList.map((p) => {
+    if (p.id === patientId) {
+      return {
+        ...p,
+        careTeam: (p.careTeam || []).filter(
+          (d: any) =>
+            d.id !== doctorId &&
+            d.doctorId !== doctorId &&
+            d.name !== doctorId &&
+            d.registrationNumber !== doctorId
+        ),
+      };
+    }
+    return p;
+  });
+
+  const auditLog = {
+    id: `audit-${Date.now()}`,
+    patientId,
+    timestamp,
+    medicationId: doctorId,
+    medicationName: 'Care Team Request',
+    actor: actor || 'Physician',
+    role: 'CLINICIAN',
+    eventType: 'FLAG_DISMISSED',
+    summary: `Doctor declined patient care team request.`,
+    details: `Request dismissed from queue across devices.`,
+  };
+  auditLogs = [auditLog, ...auditLogs];
+
+  persistDb();
+  res.json({ success: true, patients: patientsList, auditLogs });
+});
+
+// POST Patient cancels pending request
+app.post('/api/patients/care-team/cancel', (req, res) => {
+  const { patientId, doctorId } = req.body;
+
+  patientsList = patientsList.map((p) => {
+    if (p.id === patientId) {
+      return {
+        ...p,
+        careTeam: (p.careTeam || []).filter(
+          (d: any) =>
+            d.id !== doctorId &&
+            d.doctorId !== doctorId &&
+            d.name !== doctorId &&
+            d.registrationNumber !== doctorId
+        ),
+      };
+    }
+    return p;
+  });
+
+  persistDb();
+  res.json({ success: true, patients: patientsList });
+});
+
+// POST Patient removes consulting doctor
+app.post('/api/patients/care-team/remove', (req, res) => {
+  const { patientId, doctorId, actor } = req.body;
+  const timestamp = `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  let removedDocName = '';
+
+  patientsList = patientsList.map((p) => {
+    if (p.id === patientId) {
+      const target = (p.careTeam || []).find(
+        (d: any) =>
+          d.id === doctorId ||
+          d.doctorId === doctorId ||
+          d.name === doctorId ||
+          d.registrationNumber === doctorId
+      );
+      if (target) removedDocName = target.name;
+
+      return {
+        ...p,
+        careTeam: (p.careTeam || []).filter(
+          (d: any) =>
+            d.id !== doctorId &&
+            d.doctorId !== doctorId &&
+            d.name !== doctorId &&
+            d.registrationNumber !== doctorId
+        ),
+      };
+    }
+    return p;
+  });
+
+  const auditLog = {
+    id: `audit-${Date.now()}`,
+    patientId,
+    timestamp,
+    medicationId: doctorId,
+    medicationName: removedDocName || 'Consulting Doctor',
+    actor: actor || 'Patient',
+    role: 'PATIENT',
+    eventType: 'FLAG_DISMISSED',
+    summary: `Removed ${removedDocName || 'physician'} from care team.`,
+    details: `Consulting doctor unlinked from patient chart across devices.`,
+  };
+  auditLogs = [auditLog, ...auditLogs];
+
+  persistDb();
+  res.json({ success: true, patients: patientsList, auditLogs });
+});
+
+// POST Patient erases all their data
+app.post('/api/patients/clear-data', (req, res) => {
+  const { patientId, actor } = req.body;
+  const timestamp = `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+  currentMedications = currentMedications.filter((m) => (m.patientId || 'PT-94021') !== patientId);
+  comparisonReports = comparisonReports.filter((c) => (c.patientId || 'PT-94021') !== patientId);
+
+  patientsList = patientsList.map((p) => {
+    if (p.id === patientId) {
+      return {
+        ...p,
+        careTeam: (p.careTeam || []).filter((d: any) => d.isPrimary),
+      };
+    }
+    return p;
+  });
+
+  const auditLog = {
+    id: `audit-${Date.now()}`,
+    patientId,
+    timestamp,
+    medicationId: 'data-wipe',
+    medicationName: 'Complete Health Record Purge',
+    actor: actor || 'Patient',
+    role: 'PATIENT',
+    eventType: 'FLAG_DISMISSED',
+    summary: `Patient requested complete health data erasure. All medication charts purged.`,
+    details: `Right to Erasure executed across devices.`,
+  };
+  auditLogs = [auditLog, ...auditLogs.filter((l) => l.patientId !== patientId)];
+
+  persistDb();
+  res.json({ success: true, patients: patientsList, auditLogs });
+});
+
+// ── DOCTORS DIRECTORY (CROSS-DEVICE SYNC) ────────────────────
+app.get('/api/doctors', (_req, res) => {
+  res.json({ success: true, doctors: doctorsDirectory });
+});
+
+app.post('/api/doctors', (req, res) => {
+  const doctor = req.body;
+  if (!doctor || !doctor.name) {
+    return res.status(400).json({ error: 'Doctor object with name is required' });
+  }
+  const exists = doctorsDirectory.some((d: any) => d.name.toLowerCase() === doctor.name.toLowerCase());
+  if (!exists) {
+    doctorsDirectory.push(doctor);
+    persistDb();
+  }
+  res.json({ success: true, doctors: doctorsDirectory });
+});
+
+// ── AUTH & USER ACCOUNTS (CROSS-DEVICE SYNC) ─────────────────
+app.get('/api/auth/users', (_req, res) => {
+  res.json({
+    success: true,
+    users: registeredUsers,
+  });
+});
+
+app.post('/api/auth/register', (req, res) => {
+  const user = req.body;
+  if (!user || !user.email) {
+    return res.status(400).json({ error: 'User payload required.' });
+  }
+
+  const cleanEmail = user.email.trim().toLowerCase();
+  const existingIdx = registeredUsers.findIndex((u: any) => u.email.toLowerCase() === cleanEmail);
+  if (existingIdx >= 0) {
+    registeredUsers[existingIdx] = { ...registeredUsers[existingIdx], ...user };
+  } else {
+    registeredUsers.unshift(user);
+  }
+
+  if (user.role === 'physician') {
+    const docExists = doctorsDirectory.some(
+      (d: any) => d.name.toLowerCase() === user.name.toLowerCase() || (d.doctorId && d.doctorId === user.doctorId)
+    );
+    if (!docExists) {
+      doctorsDirectory.push({
+        id: `doc-${user.id}`,
+        doctorId: user.doctorId || `DOC-${user.id}`,
+        name: user.name,
+        specialty: user.specialty || 'General Medicine',
+        clinic: user.clinic || 'Metro Health Primary Care',
+        phone: user.phone || '(555) 019-4820',
+        email: user.email,
+        registrationNumber: user.registrationNumber,
+        approvalStatus: user.approvalStatus === 'approved' ? 'APPROVED' : 'PENDING_APPROVAL',
+      });
+    }
+  }
+
+  persistDb();
+  res.json({ success: true, user });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, role } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required.' });
+  const cleanEmail = email.trim().toLowerCase();
+  const user = registeredUsers.find((u: any) => u.email.toLowerCase() === cleanEmail);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found in system.' });
+  }
+  if (role && user.role !== role) {
+    return res.status(400).json({ error: `Account registered as ${user.role}.` });
+  }
+  return res.json({ success: true, user });
+});
+
+app.post('/api/auth/physicians/approve', (req, res) => {
+  const { physicianId, actor } = req.body;
+  let approvedPhysician: any = null;
+
+  registeredUsers = registeredUsers.map((u: any) => {
+    if (u.id === physicianId && u.role === 'physician') {
+      approvedPhysician = { ...u, approvalStatus: 'approved', reviewedAt: new Date().toISOString(), reviewedBy: actor || 'Admin Team' };
+      return approvedPhysician;
+    }
+    return u;
+  });
+
+  if (approvedPhysician) {
+    const docIdx = doctorsDirectory.findIndex((d: any) => d.doctorId === approvedPhysician.doctorId || d.name === approvedPhysician.name);
+    if (docIdx >= 0) {
+      doctorsDirectory[docIdx].approvalStatus = 'APPROVED';
+    } else {
+      doctorsDirectory.push({
+        id: `doc-${approvedPhysician.id}`,
+        doctorId: approvedPhysician.doctorId,
+        name: approvedPhysician.name,
+        specialty: approvedPhysician.specialty,
+        clinic: approvedPhysician.clinic,
+        phone: '(555) 019-4820',
+        email: approvedPhysician.email,
+        registrationNumber: approvedPhysician.registrationNumber,
+        approvalStatus: 'APPROVED',
+      });
+    }
+  }
+
+  persistDb();
+  res.json({ success: true, physician: approvedPhysician, users: registeredUsers });
+});
+
+app.post('/api/auth/physicians/reject', (req, res) => {
+  const { physicianId, reason } = req.body;
+  registeredUsers = registeredUsers.map((u: any) => {
+    if (u.id === physicianId && u.role === 'physician') {
+      return { ...u, approvalStatus: 'rejected', rejectionReason: reason || 'Credentials could not be verified' };
+    }
+    return u;
+  });
+  persistDb();
+  res.json({ success: true, users: registeredUsers });
 });
 
 // GET all active medications & current document

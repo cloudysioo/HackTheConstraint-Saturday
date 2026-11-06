@@ -26,6 +26,7 @@ import { DatabaseService } from '../services/dbService';
 import { comparePrescriptionMedications } from '../services/reconciliationService';
 import { useAuth } from './AuthContext';
 import { PatientUser, PhysicianUser } from '../types/auth';
+import { ApiClient } from '../services/apiClient';
 
 interface MedicationContextType {
   medications: Medication[];
@@ -145,6 +146,50 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     DatabaseService.saveAvailableDoctors(availableDoctors);
   }, [availableDoctors]);
 
+  // Real-time cross-device synchronization:
+  // Fetches live patients and doctors from shared server so multiple devices (e.g. phone & laptop) stay in sync
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncCrossDevice = async () => {
+      try {
+        const [remotePatients, remoteDoctors] = await Promise.all([
+          ApiClient.getPatients(),
+          ApiClient.getDoctors(),
+        ]);
+
+        if (isMounted) {
+          if (remotePatients && remotePatients.length > 0) {
+            setPatients(remotePatients);
+            DatabaseService.savePatients(remotePatients);
+          }
+          if (remoteDoctors && remoteDoctors.length > 0) {
+            setAvailableDoctors(remoteDoctors);
+            DatabaseService.saveAvailableDoctors(remoteDoctors);
+          }
+        }
+      } catch {}
+    };
+
+    // Initial sync immediately
+    syncCrossDevice();
+
+    // 3-second heartbeat polling for live cross-device updates
+    const timer = setInterval(syncCrossDevice, 3000);
+
+    // Instant sync when device tab gains focus
+    const handleFocus = () => {
+      syncCrossDevice();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
   // Multi-patient synchronization when a user logs in
   useEffect(() => {
     if (currentUser?.role === 'patient') {
@@ -172,6 +217,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           };
           const updated = [registeredPatientProfile, ...prev];
           DatabaseService.savePatients(updated);
+          ApiClient.syncPatient(registeredPatientProfile).catch(() => {});
           return updated;
         }
         return prev;
@@ -284,6 +330,16 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return prev;
     });
 
+    // Cross-device broadcast via server backend
+    ApiClient.requestCareTeamDoctor(patientId, pendingDoctor, currentUserName)
+      .then((res) => {
+        if (res?.patients) {
+          setPatients(res.patients);
+          DatabaseService.savePatients(res.patients);
+        }
+      })
+      .catch(() => {});
+
     const newLog: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       patientId,
@@ -294,7 +350,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       role: activeRole === 'physician' ? 'CLINICIAN' : 'PATIENT',
       eventType: 'FLAG_CREATED',
       summary: `Requested ${doctor.name} (${doctor.specialty}) to join care team — Waiting for doctor approval`,
-      details: `Co-managing clinic: ${doctor.clinic}. Request sent to physician queue.`,
+      details: `Co-managing clinic: ${doctor.clinic}. Request dispatched across devices.`,
     };
     setAuditLogs((prev) => [newLog, ...prev]);
   };
@@ -329,6 +385,16 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
+    // Cross-device approval broadcast via server backend
+    ApiClient.approveCareTeamDoctor(patientId, doctorId, currentUserName)
+      .then((res) => {
+        if (res?.patients) {
+          setPatients(res.patients);
+          DatabaseService.savePatients(res.patients);
+        }
+      })
+      .catch(() => {});
+
     const newLog: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       patientId,
@@ -339,7 +405,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       role: 'CLINICIAN',
       eventType: 'EXTRACTION_APPROVED',
       summary: `Doctor approved care team request: ${approvedDocName || 'Specialist'} is now an active co-managing clinician.`,
-      details: `Care team link activated for closed-loop prescription reconciliation.`,
+      details: `Care team link activated for closed-loop prescription reconciliation across devices.`,
     };
     setAuditLogs((prev) => [newLog, ...prev]);
   };
@@ -367,6 +433,16 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
+    // Cross-device decline broadcast via server backend
+    ApiClient.rejectCareTeamDoctor(patientId, doctorId, currentUserName)
+      .then((res) => {
+        if (res?.patients) {
+          setPatients(res.patients);
+          DatabaseService.savePatients(res.patients);
+        }
+      })
+      .catch(() => {});
+
     const newLog: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       patientId,
@@ -377,7 +453,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       role: 'CLINICIAN',
       eventType: 'FLAG_DISMISSED',
       summary: `Doctor declined patient care team request.`,
-      details: `Request dismissed from queue.`,
+      details: `Request dismissed across devices.`,
     };
     setAuditLogs((prev) => [newLog, ...prev]);
   };
@@ -403,6 +479,15 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       DatabaseService.savePatients(updated);
       return updated;
     });
+
+    ApiClient.cancelCareTeamDoctor(patientId, doctorId)
+      .then((res) => {
+        if (res?.patients) {
+          setPatients(res.patients);
+          DatabaseService.savePatients(res.patients);
+        }
+      })
+      .catch(() => {});
   };
 
   // Patient removes an active consulting doctor from care team
@@ -443,6 +528,15 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setFilterDoctorName('ALL');
     }
 
+    ApiClient.removeCareTeamDoctor(patientId, doctorId, currentUserName)
+      .then((res) => {
+        if (res?.patients) {
+          setPatients(res.patients);
+          DatabaseService.savePatients(res.patients);
+        }
+      })
+      .catch(() => {});
+
     const newLog: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       patientId,
@@ -453,7 +547,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       role: 'PATIENT',
       eventType: 'FLAG_DISMISSED',
       summary: `Removed ${removedDocName || 'physician'} from care team.`,
-      details: `Consulting doctor unlinked from patient chart.`,
+      details: `Consulting doctor unlinked across devices.`,
     };
     setAuditLogs((prev) => [newLog, ...prev]);
   };
@@ -473,8 +567,8 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setDocument(null);
 
     // 4. Reset patient's care team to primary doctor only
-    setPatients((prev) =>
-      prev.map((p) => {
+    setPatients((prev) => {
+      const updated = prev.map((p) => {
         if (p.id === patientId) {
           return {
             ...p,
@@ -482,11 +576,22 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           };
         }
         return p;
-      })
-    );
+      });
+      DatabaseService.savePatients(updated);
+      return updated;
+    });
 
     // 5. Reset doctor filter
     setFilterDoctorName('ALL');
+
+    ApiClient.clearPatientData(patientId, currentUserName)
+      .then((res) => {
+        if (res?.patients) {
+          setPatients(res.patients);
+          DatabaseService.savePatients(res.patients);
+        }
+      })
+      .catch(() => {});
 
     // 6. Record data wipe audit log entry
     const newLog: AuditLogEntry = {

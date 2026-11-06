@@ -15,6 +15,7 @@ import {
   defaultPatientUser,
   defaultAdminUser,
 } from '../data/mockUsers';
+import { ApiClient } from '../services/apiClient';
 
 // ─────────────────────────────────────────────────────────────
 // Minimal client-side password hashing (SHA-256 via Web Crypto)
@@ -158,6 +159,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(STORAGE_KEY_USERS_DB, JSON.stringify(allUsers));
     } catch {}
   }, [allUsers]);
+
+  // Synchronize users across devices via shared backend API
+  useEffect(() => {
+    let mounted = true;
+    const syncUsersFromServer = async () => {
+      try {
+        const remoteUsers = await ApiClient.getUsers();
+        if (mounted && remoteUsers && remoteUsers.length > 0) {
+          setAllUsers((prev) => {
+            const merged = [...prev];
+            let changed = false;
+            for (const ru of remoteUsers) {
+              const idx = merged.findIndex(
+                (u) => u.id === ru.id || u.email.toLowerCase() === ru.email.toLowerCase()
+              );
+              if (idx >= 0) {
+                // If remote approval status changed, update it
+                if (
+                  ru.role === 'physician' &&
+                  (ru as PhysicianUser).approvalStatus !== (merged[idx] as PhysicianUser).approvalStatus
+                ) {
+                  merged[idx] = { ...merged[idx], ...ru, password: merged[idx].password || ru.password };
+                  changed = true;
+                }
+              } else {
+                merged.push(ru);
+                changed = true;
+              }
+            }
+            return changed ? merged : prev;
+          });
+        }
+      } catch {}
+    };
+
+    syncUsersFromServer();
+    const intervalId = setInterval(syncUsersFromServer, 4000);
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+    };
+  }, []);
 
   // ── Current session (NO password field) ───────────────────
   const [currentUser, setCurrentUserState] = useState<AuthUser | null>(() => {
@@ -611,6 +654,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser(updated);
     }
 
+    // Sync approval to backend across all devices
+    ApiClient.approvePhysician(physicianId, adminName).catch(() => {});
+
     return { success: true };
   };
 
@@ -621,6 +667,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<{ success: boolean; error?: string }> => {
     const timestamp = new Date().toISOString();
     const rejectionNote = reason || 'Medical registration record could not be verified.';
+
+    // Sync rejection to backend across all devices
+    ApiClient.rejectPhysician(physicianId, rejectionNote).catch(() => {});
 
     setAllUsers((prev) =>
       prev.map((user) => {
