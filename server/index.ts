@@ -30,10 +30,19 @@ const PORT = process.env.PORT || 5001;
 app.use(cors());
 app.use(express.json());
 
-// Setup static uploads directory
-const uploadsDir = path.resolve(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+const isVercel = process.env.VERCEL === '1';
+
+// Setup static uploads directory (/tmp on Vercel)
+const uploadsDir = isVercel
+  ? path.resolve('/tmp', 'uploads')
+  : path.resolve(process.cwd(), 'uploads');
+
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn('[Uploads Dir]', e);
 }
 app.use('/uploads', express.static(uploadsDir));
 
@@ -72,7 +81,9 @@ let doctorsDirectory: any[] = [...mockDoctors];
 let registeredUsers: any[] = [...initialAuthUsers];
 
 // File-backed persistence helper
-const DB_FILE = path.resolve(process.cwd(), 'server/data/database.json');
+const DB_FILE = isVercel
+  ? path.resolve('/tmp', 'medtrace_database.json')
+  : path.resolve(process.cwd(), 'server/data/database.json');
 try {
   if (fs.existsSync(DB_FILE)) {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
@@ -877,8 +888,12 @@ app.post('/api/auth/verify-otp', (req, res) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`[medTrace Backend] Running on http://localhost:${PORT}`);
-  console.log(`[medTrace Backend] Static uploads served at http://localhost:${PORT}/uploads`);
-});
+// Start server locally (on Vercel, it is exported as a serverless handler)
+if (!isVercel && process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`[medTrace Backend] Running on http://localhost:${PORT}`);
+    console.log(`[medTrace Backend] Static uploads served at http://localhost:${PORT}/uploads`);
+  });
+}
+
+export default app;
