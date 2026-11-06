@@ -19,6 +19,7 @@ export const mockDoctors: ConsultingDoctor[] = [
     email: 'doctor@medtrace.health',
     isPrimary: true,
     registrationNumber: 'MED-184920491',
+    approvalStatus: 'APPROVED',
   },
   {
     id: 'doc-sen',
@@ -29,6 +30,7 @@ export const mockDoctors: ConsultingDoctor[] = [
     phone: '(555) 028-3921',
     email: 'ananya.sen@metroheart.org',
     registrationNumber: 'MED-938210482',
+    approvalStatus: 'APPROVED',
   },
   {
     id: 'doc-malhotra',
@@ -39,6 +41,7 @@ export const mockDoctors: ConsultingDoctor[] = [
     phone: '(555) 039-1182',
     email: 'v.malhotra@metroendocrine.org',
     registrationNumber: 'MED-748291048',
+    approvalStatus: 'APPROVED',
   },
   {
     id: 'doc-sharma',
@@ -49,6 +52,29 @@ export const mockDoctors: ConsultingDoctor[] = [
     phone: '(555) 049-9281',
     email: 'p.sharma@metrochest.org',
     registrationNumber: 'MED-638291047',
+    approvalStatus: 'APPROVED',
+  },
+  {
+    id: 'doc-verma',
+    doctorId: 'DOC-VERMA-512',
+    name: 'Dr. Deepak Verma, MD',
+    specialty: 'Neurology & Stroke Care',
+    clinic: 'Metro Neurological Institute',
+    phone: '(555) 059-3312',
+    email: 'd.verma@metroneuro.org',
+    registrationNumber: 'MED-512891042',
+    approvalStatus: 'APPROVED',
+  },
+  {
+    id: 'doc-gupta',
+    doctorId: 'DOC-GUPTA-421',
+    name: 'Dr. Sunita Gupta, MD',
+    specialty: 'Nephrology & Renal Medicine',
+    clinic: 'Metro Kidney & Dialysis Care',
+    phone: '(555) 069-7714',
+    email: 's.gupta@metrorenal.org',
+    registrationNumber: 'MED-421992015',
+    approvalStatus: 'APPROVED',
   },
 ];
 

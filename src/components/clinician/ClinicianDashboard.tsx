@@ -37,6 +37,9 @@ export const ClinicianDashboard: React.FC = () => {
     setSelectedPatientId,
     patientReviewCounts,
     clinician,
+    pendingDoctorRequests,
+    approveDoctorRequest,
+    rejectDoctorRequest,
   } = useMedications();
 
   const [selectedMedForProvenance, setSelectedMedForProvenance] = useState<Medication | null>(null);
@@ -149,6 +152,86 @@ export const ClinicianDashboard: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* ── INCOMING CARE TEAM REQUESTS NOTIFICATION CARD ── */}
+      {pendingDoctorRequests.length > 0 && (
+        <div className="bg-gradient-to-r from-warning-light/50 via-amber-50 to-warning-light/30 border-2 border-warning-border rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-warning/20 text-warning flex items-center justify-center font-bold">
+                <Users className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
+                  <span>Incoming Patient Care Team Requests</span>
+                  <span className="text-[10px] bg-warning text-white font-extrabold px-2 py-0.5 rounded-full">
+                    {pendingDoctorRequests.length} Pending
+                  </span>
+                </h3>
+                <p className="text-xs text-neutral-600">
+                  Patients requesting specialists to join their medication care team for closed-loop reconciliation.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-1">
+            {pendingDoctorRequests.map(({ patient: reqPatient, doctor: reqDoc }) => (
+              <div
+                key={`${reqPatient.id}-${reqDoc.id}`}
+                className="bg-white rounded-xl p-3.5 border border-warning-border/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                    PT
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-neutral-900 text-xs sm:text-sm">
+                        {reqPatient.name}
+                      </span>
+                      <span className="font-mono text-[10px] bg-neutral-100 text-neutral-600 px-1.5 py-0.2 rounded border border-neutral-200">
+                        {reqPatient.id}
+                      </span>
+                      <span className="text-[10px] text-neutral-400">
+                        {reqDoc.requestedAt ? `Requested ${reqDoc.requestedAt}` : 'Recently requested'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-neutral-600 mt-0.5">
+                      Requested Specialist: <strong className="text-primary">{reqDoc.name}</strong> ({reqDoc.specialty}) • {reqDoc.clinic}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => rejectDoctorRequest(reqPatient.id, reqDoc.id)}
+                    className="text-xs font-semibold text-neutral-600 hover:text-critical hover:border-critical"
+                  >
+                    Decline
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      approveDoctorRequest(reqPatient.id, reqDoc.id);
+                      setSelectedPatientId(reqPatient.id);
+                    }}
+                    className="text-xs font-bold bg-primary hover:bg-primary-hover text-white flex items-center gap-1.5 shadow-xs"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 text-secondary" />
+                    <span>Accept & Join Care Team</span>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Clinician Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-neutral-200/80 pb-6">

@@ -43,6 +43,10 @@ interface MedicationContextType {
   setSelectedPatientId: (id: string) => void;
   availableDoctors: ConsultingDoctor[];
   addConsultingDoctor: (patientId: string, doctor: ConsultingDoctor) => void;
+  approveDoctorRequest: (patientId: string, doctorId: string) => void;
+  rejectDoctorRequest: (patientId: string, doctorId: string) => void;
+  cancelDoctorRequest: (patientId: string, doctorId: string) => void;
+  pendingDoctorRequests: Array<{ patient: PatientProfile; doctor: ConsultingDoctor }>;
   filterDoctorName: string | 'ALL';
   setFilterDoctorName: (name: string | 'ALL') => void;
   patientReviewCounts: Record<string, { needsReview: number; total: number; flagged: number; conflict: number }>;
@@ -189,16 +193,32 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   };
 
-  // Add consulting doctor to a patient's care team
+  // Add consulting doctor to a patient's care team (with PENDING_APPROVAL status)
   const addConsultingDoctor = (patientId: string, doctor: ConsultingDoctor) => {
+    const timestamp = getFormattedTime();
+    const pendingDoctor: ConsultingDoctor = {
+      ...doctor,
+      approvalStatus: 'PENDING_APPROVAL',
+      requestedAt: timestamp,
+    };
+
     setPatients((prev) =>
       prev.map((p) => {
         if (p.id === patientId) {
           const exists = p.careTeam.some((d) => d.name === doctor.name);
-          if (exists) return p;
+          if (exists) {
+            return {
+              ...p,
+              careTeam: p.careTeam.map((d) =>
+                d.name === doctor.name
+                  ? { ...d, approvalStatus: 'PENDING_APPROVAL' as const, requestedAt: timestamp }
+                  : d
+              ),
+            };
+          }
           return {
             ...p,
-            careTeam: [...p.careTeam, doctor],
+            careTeam: [...p.careTeam, pendingDoctor],
           };
         }
         return p;
@@ -208,26 +228,115 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Also add to master directory if new
     setAvailableDoctors((prev) => {
       if (!prev.some((d) => d.name === doctor.name)) {
-        return [...prev, doctor];
+        return [...prev, pendingDoctor];
       }
       return prev;
     });
 
-    const timestamp = getFormattedTime();
     const newLog: AuditLogEntry = {
       id: `audit-${Date.now()}`,
       patientId,
       timestamp,
       medicationId: 'care-team',
-      medicationName: 'Care Team Expansion',
+      medicationName: 'Care Team Request',
       actor: currentUserName,
       role: activeRole === 'physician' ? 'CLINICIAN' : 'PATIENT',
       eventType: 'FLAG_CREATED',
-      summary: `Added ${doctor.name} (${doctor.specialty}) to care team`,
-      details: `Co-managing clinic: ${doctor.clinic}. Cross-doctor medication reconciliation active.`,
+      summary: `Requested ${doctor.name} (${doctor.specialty}) to join care team — Waiting for doctor approval`,
+      details: `Co-managing clinic: ${doctor.clinic}. Request sent to physician queue.`,
     };
     setAuditLogs((prev) => [newLog, ...prev]);
   };
+
+  // Doctor approves patient's linking request
+  const approveDoctorRequest = (patientId: string, doctorId: string) => {
+    const timestamp = getFormattedTime();
+    let approvedDocName = '';
+
+    setPatients((prev) =>
+      prev.map((p) => {
+        if (p.id === patientId) {
+          return {
+            ...p,
+            careTeam: p.careTeam.map((d) => {
+              if (d.id === doctorId || d.doctorId === doctorId) {
+                approvedDocName = d.name;
+                return { ...d, approvalStatus: 'APPROVED' as const };
+              }
+              return d;
+            }),
+          };
+        }
+        return p;
+      })
+    );
+
+    const newLog: AuditLogEntry = {
+      id: `audit-${Date.now()}`,
+      patientId,
+      timestamp,
+      medicationId: doctorId,
+      medicationName: approvedDocName || 'Consulting Doctor',
+      actor: currentUserName,
+      role: 'CLINICIAN',
+      eventType: 'EXTRACTION_APPROVED',
+      summary: `Doctor approved care team request: ${approvedDocName || 'Specialist'} is now an active co-managing clinician.`,
+      details: `Care team link activated for closed-loop prescription reconciliation.`,
+    };
+    setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  // Doctor rejects patient's linking request
+  const rejectDoctorRequest = (patientId: string, doctorId: string) => {
+    const timestamp = getFormattedTime();
+    setPatients((prev) =>
+      prev.map((p) => {
+        if (p.id === patientId) {
+          return {
+            ...p,
+            careTeam: p.careTeam.filter((d) => d.id !== doctorId && d.doctorId !== doctorId),
+          };
+        }
+        return p;
+      })
+    );
+
+    const newLog: AuditLogEntry = {
+      id: `audit-${Date.now()}`,
+      patientId,
+      timestamp,
+      medicationId: doctorId,
+      medicationName: 'Care Team Request',
+      actor: currentUserName,
+      role: 'CLINICIAN',
+      eventType: 'FLAG_DISMISSED',
+      summary: `Doctor declined patient care team request.`,
+      details: `Request dismissed from queue.`,
+    };
+    setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  // Patient cancels pending request
+  const cancelDoctorRequest = (patientId: string, doctorId: string) => {
+    setPatients((prev) =>
+      prev.map((p) => {
+        if (p.id === patientId) {
+          return {
+            ...p,
+            careTeam: p.careTeam.filter((d) => d.id !== doctorId && d.doctorId !== doctorId),
+          };
+        }
+        return p;
+      })
+    );
+  };
+
+  // Compute pending requests across patients
+  const pendingDoctorRequests = patients.flatMap((p) =>
+    (p.careTeam || [])
+      .filter((d) => d.approvalStatus === 'PENDING_APPROVAL')
+      .map((d) => ({ patient: p, doctor: d }))
+  );
 
   // Medications for current active patient (with optional doctor filter)
   const currentPatientMeds = allMedications.filter(
@@ -592,6 +701,10 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setSelectedPatientId,
         availableDoctors,
         addConsultingDoctor,
+        approveDoctorRequest,
+        rejectDoctorRequest,
+        cancelDoctorRequest,
+        pendingDoctorRequests,
         filterDoctorName,
         setFilterDoctorName,
         patientReviewCounts,

@@ -55,6 +55,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
     uploadPrescriptionForDoctor,
     availableDoctors,
     addConsultingDoctor,
+    cancelDoctorRequest,
     filterDoctorName,
     setFilterDoctorName,
     comparisonReports,
@@ -237,6 +238,54 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
           {(patient.careTeam || []).map((doc, idx) => {
             const docMedsCount = medications.filter((m) => m.prescribedBy === doc.name).length;
             const isSelectedFilter = filterDoctorName === doc.name;
+            const isPending = doc.approvalStatus === 'PENDING_APPROVAL';
+
+            if (isPending) {
+              return (
+                <div
+                  key={doc.id || idx}
+                  className="bg-warning-light/35 rounded-xl p-4 border border-warning-border transition-all shadow-xs relative overflow-hidden"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-warning/15 text-warning flex items-center justify-center font-bold text-xs shrink-0">
+                        <Clock className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-neutral-900 text-sm">{doc.name}</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-warning/20 text-warning font-bold px-2 py-0.5 rounded-full border border-warning/30">
+                            Waiting for Approval
+                          </span>
+                        </div>
+                        <p className="text-xs font-semibold text-primary mt-0.5">{doc.specialty}</p>
+                        <p className="text-[11px] text-neutral-500 mt-0.5 flex items-center gap-1">
+                          <Building className="h-3 w-3 text-neutral-400" />
+                          <span>{doc.clinic}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-neutral-600 mt-2.5 bg-white/70 p-2 rounded-lg border border-warning-border/40">
+                    Request sent to doctor. Waiting for doctor to review and accept into their care team before accessing your chart.
+                  </p>
+
+                  <div className="mt-3 pt-2.5 border-t border-warning-border/50 flex items-center justify-between text-xs">
+                    <span className="text-[10px] text-neutral-400">
+                      {doc.requestedAt ? `Sent ${doc.requestedAt}` : 'Pending doctor review'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => cancelDoctorRequest(patient.id, doc.id)}
+                      className="text-[11px] font-bold text-critical hover:underline"
+                    >
+                      Cancel Request
+                    </button>
+                  </div>
+                </div>
+              );
+            }
 
             return (
               <div
@@ -353,7 +402,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                 >
                   {(patient.careTeam || []).map((doc) => (
                     <option key={doc.id} value={doc.name}>
-                      {doc.name} ({doc.specialty})
+                      {doc.name} ({doc.specialty}){doc.approvalStatus === 'PENDING_APPROVAL' ? ' — [Waiting for Approval]' : ''}
                     </option>
                   ))}
                 </select>

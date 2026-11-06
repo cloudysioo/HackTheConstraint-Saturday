@@ -46,6 +46,8 @@ export interface ConsultingDoctor {
   email?: string;
   isPrimary?: boolean;
   registrationNumber?: string;
+  approvalStatus?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
+  requestedAt?: string;
 }
 
 export type ComparisonDiscrepancySeverity = 'HIGH' | 'MEDIUM' | 'LOW';
