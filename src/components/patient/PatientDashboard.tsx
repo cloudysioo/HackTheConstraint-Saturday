@@ -193,7 +193,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     Extracting Medical Text with OCR...
                   </h4>
                   <p className="text-xs font-mono text-primary font-medium animate-pulse">
-                    {uploadProgressText || 'Scanning optical text and medical entities...'}
+                    {uploadProgressText || 'Scanning the document...'}
                   </p>
                 </div>
               ) : (

@@ -137,14 +137,14 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Upload prescription file: supports Local Backend (Apple Vision), Gemini 1.5 Flash Vision, and In-Browser OCR
   const uploadPrescriptionFile = async (file: File): Promise<boolean> => {
     setIsUploading(true);
-    setUploadProgressText('Processing prescription document...');
+    setUploadProgressText('Scanning the document...');
 
     // 1. Try local Express backend if running (e.g. on local Mac with Apple Vision)
     try {
       const formData = new FormData();
       formData.append('prescription', file);
 
-      setUploadProgressText('Connecting to Anti-Gravity OCR Engine...');
+      setUploadProgressText('Scanning the document...');
 
       const response = await fetch('/api/prescriptions/upload', {
         method: 'POST',
@@ -179,7 +179,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 2. Try Gemini Vision (Anti-Gravity Multimodal OCR - works via secure /api/gemini serverless route on Vercel or direct key)
     const effectiveKey = geminiApiKey || getStoredGeminiApiKey();
     try {
-      setUploadProgressText('Running Anti-Gravity Vision Neural Entity Extraction...');
+      setUploadProgressText('Scanning the document...');
       const geminiResult = await processGeminiPrescriptionOCR(file, effectiveKey?.trim() || '', (msg) => {
         setUploadProgressText(msg);
       });
@@ -199,7 +199,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // 3. Fallback: In-browser WebAssembly Neural OCR (Zero-API, 100% works on Vercel)
     try {
-      setUploadProgressText('Running in-browser Anti-Gravity OCR (Tesseract Neural)...');
+      setUploadProgressText('Scanning the document...');
       const clientResult = await processClientPrescriptionOCR(file, (msg) => {
         setUploadProgressText(msg);
       });

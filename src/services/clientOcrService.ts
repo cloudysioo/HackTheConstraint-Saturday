@@ -377,10 +377,10 @@ export async function processClientPrescriptionOCR(
   let rawLines: Array<{ text: string; confidence: number; bbox: { top: number; left: number; width: number; height: number } }> = [];
   let fullText = '';
 
-  onProgress?.('Initializing in-browser Neural OCR engine...');
+  onProgress?.('Scanning the document...');
 
   try {
-    onProgress?.('Enhancing image ink contrast for handwriting recognition...');
+    onProgress?.('Scanning the document...');
     const preprocessed = await preprocessImageForHandwriting(file);
 
     // Run client-side Tesseract.js directly inside the browser WebWorker with local/CDN fallback for Vercel
@@ -392,7 +392,7 @@ export async function processClientPrescriptionOCR(
     } catch {
       worker = await createWorker('eng');
     }
-    onProgress?.('Scanning optical document and recognizing characters...');
+    onProgress?.('Scanning the document...');
     try {
       await (worker as any).setParameters({
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.,/()+%×* ',
@@ -435,7 +435,7 @@ export async function processClientPrescriptionOCR(
     ];
   }
 
-  onProgress?.('Extracting clinical entities & verifying dosages...');
+  onProgress?.('Scanning the document...');
 
   // Clinical Entity Resolution - Apply Rigid Adaptive Stripping of all extraneous hospital/billing/patient data
   const medications: Medication[] = [];

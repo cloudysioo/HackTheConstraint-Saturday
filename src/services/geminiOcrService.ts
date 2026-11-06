@@ -80,12 +80,12 @@ export async function processGeminiPrescriptionOCR(
   rawOcrText: string;
   strictResults: AntiGravityExtractionResult[];
 }> {
-  onProgress?.('Encoding prescription for Anti-Gravity Vision...');
+  onProgress?.('Scanning the document...');
   const { base64, mimeType } = await fileToBase64(file);
   const fileUrl = URL.createObjectURL(file);
   const timestamp = `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
-  onProgress?.('Invoking Anti-Gravity Neural Medical Entity Extraction...');
+  onProgress?.('Scanning the document...');
 
   let rawContent: string | null = null;
   let lastErrorMsg = '';
@@ -93,7 +93,7 @@ export async function processGeminiPrescriptionOCR(
   // 1. Try secure serverless proxy (/api/gemini) first
   // This uses server-side GEMINI_API_KEY without exposing keys to the client or triggering Vercel security flags
   try {
-    onProgress?.('Contacting Anti-Gravity serverless vision engine...');
+    onProgress?.('Scanning the document...');
     const proxyResponse = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -146,7 +146,7 @@ export async function processGeminiPrescriptionOCR(
 
     for (let attempt = 0; attempt < 2 && !rawContent; attempt++) {
       for (const model of modelsToTry) {
-        onProgress?.(`Parsing medical details with ${model}...`);
+        onProgress?.('Scanning the document...');
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
 
         try {
@@ -183,7 +183,7 @@ export async function processGeminiPrescriptionOCR(
     throw new Error(`Anti-Gravity Vision API unavailable: ${lastErrorMsg}`);
   }
 
-  onProgress?.('Formatting strict clinical schema and frequency integers...');
+  onProgress?.('Scanning the document...');
 
   let parsed: any;
   try {
