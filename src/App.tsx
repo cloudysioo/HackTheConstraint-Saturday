@@ -6,6 +6,7 @@ import { PatientDashboard } from './components/patient/PatientDashboard';
 import { ClinicianDashboard } from './components/clinician/ClinicianDashboard';
 import { FlagErrorModal } from './components/FlagErrorModal';
 import { DocumentViewerModal } from './components/DocumentViewerModal';
+import { AccountSettingsModal } from './components/patient/AccountSettingsModal';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { AdminLoginPage } from './components/auth/AdminLoginPage';
@@ -68,6 +69,8 @@ const MainAppContent: React.FC = () => {
     medications,
     patient,
     document,
+    comparisonReports,
+    clearAllPatientData,
     flagMedication,
   } = useMedications();
 
@@ -77,6 +80,7 @@ const MainAppContent: React.FC = () => {
   const [selectedMedForFlag, setSelectedMedForFlag] = useState<Medication | null>(null);
   const [isFlagModalOpen, setIsFlagModalOpen] = useState<boolean>(false);
   const [isViewerModalOpen, setIsViewerModalOpen] = useState<boolean>(false);
+  const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState<boolean>(false);
   const [viewerActiveMedicationId, setViewerActiveMedicationId] = useState<string | undefined>(undefined);
 
   const handleOpenFlagModal = (medication: Medication) => {
@@ -100,7 +104,7 @@ const MainAppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-background text-neutral-900 flex flex-col font-sans">
       {/* Top navigation */}
-      <Navbar />
+      <Navbar onOpenAccountSettings={() => setIsAccountSettingsOpen(true)} />
 
       {/* Route based on logged-in role */}
       <div className="flex-1">
@@ -111,11 +115,23 @@ const MainAppContent: React.FC = () => {
             medications={medications}
             onOpenFlagModal={handleOpenFlagModal}
             onOpenDocumentViewer={handleOpenDocumentViewer}
+            onOpenAccountSettings={() => setIsAccountSettingsOpen(true)}
           />
         ) : (
           <ClinicianDashboard />
         )}
       </div>
+
+      {/* Patient: Account Settings & Data Privacy Modal */}
+      <AccountSettingsModal
+        isOpen={isAccountSettingsOpen}
+        onClose={() => setIsAccountSettingsOpen(false)}
+        patient={patient}
+        medications={medications}
+        document={document}
+        comparisonReports={comparisonReports}
+        onClearAllData={clearAllPatientData}
+      />
 
       {/* Patient: Flag Error Modal */}
       <FlagErrorModal

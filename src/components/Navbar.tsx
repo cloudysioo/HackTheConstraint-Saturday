@@ -1,10 +1,14 @@
 import React from 'react';
-import { UserCheck, Stethoscope, LogOut, ShieldCheck } from 'lucide-react';
+import { UserCheck, Stethoscope, LogOut, ShieldCheck, Settings } from 'lucide-react';
 import { useMedications } from '../context/MedicationContext';
 import { useAuth } from '../context/AuthContext';
 import { PatientUser, PhysicianUser } from '../types/auth';
 
-export const Navbar: React.FC = () => {
+interface NavbarProps {
+  onOpenAccountSettings?: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({ onOpenAccountSettings }) => {
   const { counts } = useMedications();
   const { currentUser, activeRole, logout } = useAuth();
 
@@ -86,6 +90,19 @@ export const Navbar: React.FC = () => {
               <ShieldCheck className="h-3.5 w-3.5" />
               <span>HIPAA</span>
             </div>
+
+            {/* Account Settings button */}
+            {activeRole === 'patient' && onOpenAccountSettings && (
+              <button
+                type="button"
+                onClick={onOpenAccountSettings}
+                title="Account Settings & Data Privacy"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/80 hover:text-white hover:bg-white/15 border border-white/20 transition-all"
+              >
+                <Settings className="h-3.5 w-3.5 text-secondary" />
+                <span className="hidden sm:inline">Settings</span>
+              </button>
+            )}
 
             {/* Logout button */}
             <button

@@ -14,6 +14,8 @@ import {
   Users,
   Building,
   ShieldAlert,
+  Trash2,
+  Settings,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card';
 import {
@@ -26,7 +28,7 @@ import {
 } from '../ui/table';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { Medication, UploadedDocument, PatientProfile } from '../../types/medication';
+import { Medication, UploadedDocument, PatientProfile, ConsultingDoctor } from '../../types/medication';
 import { useMedications } from '../../context/MedicationContext';
 import { AddDoctorModal } from './AddDoctorModal';
 import { PrescriptionComparisonView } from './PrescriptionComparisonView';
@@ -37,6 +39,7 @@ interface PatientDashboardProps {
   medications: Medication[];
   onOpenFlagModal: (medication: Medication) => void;
   onOpenDocumentViewer: (medicationId?: string) => void;
+  onOpenAccountSettings?: () => void;
 }
 
 export const PatientDashboard: React.FC<PatientDashboardProps> = ({
@@ -45,6 +48,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
   medications,
   onOpenFlagModal,
   onOpenDocumentViewer,
+  onOpenAccountSettings,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +59,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
     uploadPrescriptionForDoctor,
     availableDoctors,
     addConsultingDoctor,
+    removeConsultingDoctor,
     cancelDoctorRequest,
     filterDoctorName,
     setFilterDoctorName,
@@ -69,6 +74,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
     patient.careTeam?.[0]?.name || patient.doctor || 'Dr. Rajesh Iyer, MD'
   );
   const [isAddDoctorModalOpen, setIsAddDoctorModalOpen] = useState(false);
+  const [doctorToRemove, setDoctorToRemove] = useState<ConsultingDoctor | null>(null);
 
   // Handle native file input selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -192,16 +198,31 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
           </p>
         </div>
 
-        {/* Patient Profile & MRN Pill */}
-        <div className="flex items-center gap-3 bg-white border border-neutral-200/90 rounded-xl p-3 shadow-xs">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
-            PT
+        {/* Patient Profile, MRN Pill & Settings */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-3 bg-white border border-neutral-200/90 rounded-xl p-3 shadow-xs">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
+              PT
+            </div>
+            <div className="text-xs">
+              <p className="text-neutral-500">Patient Identifier</p>
+              <p className="font-bold text-neutral-900 font-mono">{patient.id}</p>
+              <p className="text-neutral-500">DOB: {patient.dob}</p>
+            </div>
           </div>
-          <div className="text-xs">
-            <p className="text-neutral-500">Patient Identifier</p>
-            <p className="font-bold text-neutral-900 font-mono">{patient.id}</p>
-            <p className="text-neutral-500">DOB: {patient.dob}</p>
-          </div>
+
+          {onOpenAccountSettings && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onOpenAccountSettings}
+              className="flex items-center gap-1.5 text-xs font-bold border-neutral-200 text-neutral-700 hover:text-primary hover:border-primary shadow-xs h-auto py-3 px-3.5 bg-white"
+            >
+              <Settings className="h-4 w-4 text-secondary" />
+              <span>Account Settings</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -324,18 +345,82 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     <strong className="text-neutral-900">{docMedsCount}</strong> active medication{docMedsCount !== 1 ? 's' : ''}
                   </span>
 
-                  <button
-                    type="button"
-                    onClick={() => setFilterDoctorName(isSelectedFilter ? 'ALL' : doc.name)}
-                    className="text-[11px] font-bold text-secondary-dark hover:underline"
-                  >
-                    {isSelectedFilter ? 'Showing All' : 'Filter Meds ➔'}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFilterDoctorName(isSelectedFilter ? 'ALL' : doc.name)}
+                      className="text-[11px] font-bold text-secondary-dark hover:underline"
+                    >
+                      {isSelectedFilter ? 'Showing All' : 'Filter Meds ➔'}
+                    </button>
+                    {!doc.isPrimary && (
+                      <button
+                        type="button"
+                        onClick={() => setDoctorToRemove(doc)}
+                        title={`Remove ${doc.name} from care team`}
+                        className="text-[11px] font-semibold text-neutral-400 hover:text-critical flex items-center gap-1 transition-colors"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        <span>Remove</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
+
+        {/* Remove Doctor Confirmation Modal */}
+        {doctorToRemove && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-neutral-200 overflow-hidden">
+              <div className="bg-critical/10 border-b border-critical/20 p-5 flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-critical/15 text-critical flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-neutral-900">Remove Doctor from Care Team?</h3>
+                  <p className="text-xs text-neutral-600 mt-1">
+                    You are removing <strong>{doctorToRemove.name}</strong> from your co-managing care team.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-5 text-xs text-neutral-600 space-y-2.5">
+                <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200">
+                  <div className="font-bold text-neutral-900">{doctorToRemove.name}</div>
+                  <div className="text-primary font-semibold text-[11px]">{doctorToRemove.specialty}</div>
+                  <div className="text-neutral-500 text-[10px]">{doctorToRemove.clinic}</div>
+                </div>
+                <p className="leading-relaxed">
+                  Removing this doctor will disconnect their cross-specialist prescription screening link. Their existing prescriptions will remain on your chart unless cleared in Account Settings.
+                </p>
+              </div>
+
+              <div className="p-4 bg-neutral-50 border-t border-neutral-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDoctorToRemove(null)}
+                  className="px-4 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-200/60 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeConsultingDoctor(patient.id, doctorToRemove.id);
+                    setDoctorToRemove(null);
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-white bg-critical hover:bg-critical-hover rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Yes, Remove Doctor</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* SECTION 0.5: Cross-Doctor Interaction Alert Banner (Core MedTrace Handover Safety) */}

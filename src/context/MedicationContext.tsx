@@ -43,9 +43,11 @@ interface MedicationContextType {
   setSelectedPatientId: (id: string) => void;
   availableDoctors: ConsultingDoctor[];
   addConsultingDoctor: (patientId: string, doctor: ConsultingDoctor) => void;
+  removeConsultingDoctor: (patientId: string, doctorId: string) => void;
   approveDoctorRequest: (patientId: string, doctorId: string) => void;
   rejectDoctorRequest: (patientId: string, doctorId: string) => void;
   cancelDoctorRequest: (patientId: string, doctorId: string) => void;
+  clearAllPatientData: (patientId: string) => void;
   pendingDoctorRequests: Array<{ patient: PatientProfile; doctor: ConsultingDoctor }>;
   filterDoctorName: string | 'ALL';
   setFilterDoctorName: (name: string | 'ALL') => void;
@@ -329,6 +331,97 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return p;
       })
     );
+  };
+
+  // Patient removes an active consulting doctor from care team
+  const removeConsultingDoctor = (patientId: string, doctorId: string) => {
+    const timestamp = getFormattedTime();
+    let removedDocName = '';
+
+    setPatients((prev) =>
+      prev.map((p) => {
+        if (p.id === patientId) {
+          const target = p.careTeam.find((d) => d.id === doctorId || d.doctorId === doctorId);
+          if (target) removedDocName = target.name;
+          return {
+            ...p,
+            careTeam: p.careTeam.filter((d) => d.id !== doctorId && d.doctorId !== doctorId),
+          };
+        }
+        return p;
+      })
+    );
+
+    // If active filter was set to this doctor, reset to ALL
+    if (filterDoctorName === removedDocName) {
+      setFilterDoctorName('ALL');
+    }
+
+    const newLog: AuditLogEntry = {
+      id: `audit-${Date.now()}`,
+      patientId,
+      timestamp,
+      medicationId: doctorId,
+      medicationName: removedDocName || 'Consulting Doctor',
+      actor: currentUserName,
+      role: 'PATIENT',
+      eventType: 'FLAG_DISMISSED',
+      summary: `Removed ${removedDocName || 'physician'} from care team.`,
+      details: `Consulting doctor unlinked from patient chart.`,
+    };
+    setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  // Patient purges all their data (medications, documents, comparisons, care team)
+  const clearAllPatientData = (patientId: string) => {
+    const timestamp = getFormattedTime();
+
+    // 1. Clear all medications for this patient
+    setAllMedications((prev) => prev.filter((m) => (m.patientId || 'PT-94021') !== patientId));
+
+    // 2. Clear comparison reports for this patient
+    setComparisonReports((prev) => prev.filter((r) => (r.patientId || 'PT-94021') !== patientId));
+    setActiveComparisonReportId('');
+
+    // 3. Clear active uploaded document
+    setDocument(null);
+
+    // 4. Reset patient's care team to primary doctor only
+    setPatients((prev) =>
+      prev.map((p) => {
+        if (p.id === patientId) {
+          return {
+            ...p,
+            careTeam: p.careTeam.filter((d) => d.isPrimary),
+          };
+        }
+        return p;
+      })
+    );
+
+    // 5. Reset doctor filter
+    setFilterDoctorName('ALL');
+
+    // 6. Record data wipe audit log entry
+    const newLog: AuditLogEntry = {
+      id: `audit-${Date.now()}`,
+      patientId,
+      timestamp,
+      medicationId: 'data-wipe',
+      medicationName: 'Complete Health Record Purge',
+      actor: currentUserName,
+      role: 'PATIENT',
+      eventType: 'FLAG_DISMISSED',
+      summary: `Patient requested complete health data erasure. All medication charts and prescription files purged.`,
+      details: `Right to Erasure executed. Document OCR history and conflict logs cleared.`,
+    };
+    setAuditLogs((prev) => [newLog, ...prev.filter((l) => l.patientId !== patientId)]);
+
+    // Clear local storage cache
+    try {
+      localStorage.removeItem(`medtrace_prescriptions_${patientId}`);
+      localStorage.removeItem(`medtrace_reports_${patientId}`);
+    } catch {}
   };
 
   // Compute pending requests across patients
@@ -701,9 +794,11 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setSelectedPatientId,
         availableDoctors,
         addConsultingDoctor,
+        removeConsultingDoctor,
         approveDoctorRequest,
         rejectDoctorRequest,
         cancelDoctorRequest,
+        clearAllPatientData,
         pendingDoctorRequests,
         filterDoctorName,
         setFilterDoctorName,
