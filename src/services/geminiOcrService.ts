@@ -80,102 +80,75 @@ export async function processGeminiPrescriptionOCR(
   rawOcrText: string;
   strictResults: AntiGravityExtractionResult[];
 }> {
-  onProgress?.('Scanning the document...');
+  onProgress?.('Encoding prescription for Anti-Gravity Vision...');
   const { base64, mimeType } = await fileToBase64(file);
   const fileUrl = URL.createObjectURL(file);
   const timestamp = `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
-  onProgress?.('Scanning the document...');
+  onProgress?.('Invoking Anti-Gravity Neural Medical Entity Extraction...');
+
+  const payload = {
+    contents: [
+      {
+        parts: [
+          { text: ANTI_GRAVITY_SYSTEM_PROMPT },
+          {
+            inline_data: {
+              mime_type: mimeType === 'application/pdf' ? 'application/pdf' : mimeType || 'image/jpeg',
+              data: base64,
+            },
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      response_mime_type: 'application/json',
+      temperature: 0.1,
+    },
+  };
+
+  const modelsToTry = [
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash',
+    'gemini-1.5-pro',
+  ];
 
   let rawContent: string | null = null;
   let lastErrorMsg = '';
 
-  // 1. Try secure serverless proxy (/api/gemini) first
-  // This uses server-side GEMINI_API_KEY without exposing keys to the client or triggering Vercel security flags
-  try {
-    onProgress?.('Scanning the document...');
-    const proxyResponse = await fetch('/api/gemini', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base64, mimeType }),
-    });
+  for (let attempt = 0; attempt < 2 && !rawContent; attempt++) {
+    for (const model of modelsToTry) {
+      onProgress?.(`Parsing medical details with ${model}...`);
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    if (proxyResponse.ok) {
-      const data = await proxyResponse.json();
-      if (data && (data.medications || data.fullText)) {
-        rawContent = JSON.stringify(data);
-      }
-    } else {
-      const errJson = await proxyResponse.json().catch(() => ({}));
-      lastErrorMsg = errJson.error || proxyResponse.statusText;
-    }
-  } catch (proxyErr: any) {
-    // /api/gemini unavailable or running pure static without serverless
-    lastErrorMsg = proxyErr?.message || 'Serverless proxy unavailable';
-  }
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
 
-  // 2. Direct client fallback if user provided direct key
-  if (!rawContent && apiKey && apiKey.trim().length > 5) {
-    const payload = {
-      contents: [
-        {
-          parts: [
-            { text: ANTI_GRAVITY_SYSTEM_PROMPT },
-            {
-              inline_data: {
-                mime_type: mimeType === 'application/pdf' ? 'application/pdf' : mimeType || 'image/jpeg',
-                data: base64,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        response_mime_type: 'application/json',
-        temperature: 0.1,
-      },
-    };
-
-    const modelsToTry = [
-      'gemini-3.5-flash-lite',
-      'gemini-3.8-flash',
-      'gemini-flash-latest',
-      'gemini-2.5-flash',
-      'gemini-2.5-pro',
-    ];
-
-    for (let attempt = 0; attempt < 2 && !rawContent; attempt++) {
-      for (const model of modelsToTry) {
-        onProgress?.('Scanning the document...');
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
-
-        try {
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-
-          if (response.ok) {
-            const json = await response.json();
-            const content = json.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (content) {
-              rawContent = content;
-              break;
-            }
-          } else {
-            const errText = await response.text();
-            console.warn(`[Anti-Gravity OCR] Model ${model} returned ${response.status}:`, errText);
-            lastErrorMsg = `${model} returned ${response.status}`;
+        if (response.ok) {
+          const json = await response.json();
+          const content = json.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (content) {
+            rawContent = content;
+            break;
           }
-        } catch (netErr: any) {
-          console.warn(`[Anti-Gravity OCR] Network error on ${model}:`, netErr);
-          lastErrorMsg = netErr?.message || 'Network error';
+        } else {
+          const errText = await response.text();
+          console.warn(`[Anti-Gravity OCR] Model ${model} returned ${response.status}:`, errText);
+          lastErrorMsg = `${model} returned ${response.status}`;
         }
+      } catch (netErr: any) {
+        console.warn(`[Anti-Gravity OCR] Network error on ${model}:`, netErr);
+        lastErrorMsg = netErr?.message || 'Network error';
       }
-      if (!rawContent && attempt === 0) {
-        await new Promise((r) => setTimeout(r, 800));
-      }
+    }
+    if (!rawContent && attempt === 0) {
+      await new Promise((r) => setTimeout(r, 800));
     }
   }
 
@@ -183,7 +156,7 @@ export async function processGeminiPrescriptionOCR(
     throw new Error(`Anti-Gravity Vision API unavailable: ${lastErrorMsg}`);
   }
 
-  onProgress?.('Scanning the document...');
+  onProgress?.('Formatting strict clinical schema and frequency integers...');
 
   let parsed: any;
   try {

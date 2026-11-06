@@ -1,4 +1,6 @@
-export type UserRole = 'patient' | 'physician';
+export type UserRole = 'patient' | 'physician' | 'admin';
+
+export type PhysicianApprovalStatus = 'pending' | 'approved' | 'rejected';
 
 export interface BaseUser {
   id: string;
@@ -20,14 +22,25 @@ export interface PatientUser extends BaseUser {
 
 export interface PhysicianUser extends BaseUser {
   role: 'physician';
-  npi: string; // National Provider Identifier
+  doctorId: string; // Unique App-generated Doctor ID for patient linking (e.g. DOC-IYER-184)
+  registrationNumber: string; // Medical Registration Number (replaces strict 10-digit NPI)
+  npi?: string; // Optional legacy NPI
   title: string;
   specialty: string;
   clinic: string;
   licenseNumber?: string;
+  approvalStatus: PhysicianApprovalStatus;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  rejectionReason?: string;
 }
 
-export type AuthUser = PatientUser | PhysicianUser;
+export interface AdminUser extends BaseUser {
+  role: 'admin';
+  department?: string;
+}
+
+export type AuthUser = PatientUser | PhysicianUser | AdminUser;
 
 export interface PatientRegisterInput {
   name: string;
@@ -44,9 +57,21 @@ export interface PhysicianRegisterInput {
   name: string;
   email: string;
   password: string;
-  npi: string;
+  registrationNumber: string;
   title?: string;
   specialty?: string;
   clinic?: string;
   licenseNumber?: string;
+}
+
+export interface SendOtpResult {
+  success: boolean;
+  error?: string;
+  previewOtp?: string;
+  expiresAt?: number;
+}
+
+export interface VerifyOtpResult {
+  success: boolean;
+  error?: string;
 }

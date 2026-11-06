@@ -7,6 +7,8 @@ import {
   Clock,
   FileSearch,
   ShieldAlert,
+  Users,
+  ChevronDown,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import {
@@ -23,11 +25,23 @@ import { useMedications } from '../../context/MedicationContext';
 import { Medication } from '../../types/medication';
 import { ProvenanceViewer } from './ProvenanceViewer';
 import { ClinicianAuditLog } from './ClinicianAuditLog';
+import { PatientQueueModal } from './PatientQueueModal';
 
 export const ClinicianDashboard: React.FC = () => {
-  const { medications, counts, patient, clinician, document } = useMedications();
+  const {
+    medications,
+    counts,
+    patient,
+    patients,
+    selectedPatientId,
+    setSelectedPatientId,
+    patientReviewCounts,
+    clinician,
+  } = useMedications();
+
   const [selectedMedForProvenance, setSelectedMedForProvenance] = useState<Medication | null>(null);
   const [isProvenanceModalOpen, setIsProvenanceModalOpen] = useState(false);
+  const [isQueueModalOpen, setIsQueueModalOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'NEEDS_REVIEW' | 'FLAGGED' | 'VERIFIED'>('NEEDS_REVIEW');
 
   const handleOpenProvenance = (med: Medication) => {
@@ -85,19 +99,69 @@ export const ClinicianDashboard: React.FC = () => {
 
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8">
-      
+      {/* ── TOP BAR: MULTI-PATIENT ROSTER & PATIENT QUEUE SELECTOR ── */}
+      <div className="bg-white border-2 border-primary/20 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className="w-11 h-11 rounded-xl bg-primary text-secondary flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
+            MD
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-secondary/15 text-primary px-2 py-0.5 rounded-full">
+                Active Patient Chart
+              </span>
+              <span className="text-xs text-neutral-400">MRN:</span>
+              <span className="font-mono text-xs font-bold text-primary bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200">
+                {patient.id}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-neutral-900 tracking-tight">
+                {patient.name}
+              </h2>
+              <span className="text-xs text-neutral-500">
+                (DOB: {patient.dob})
+              </span>
+            </div>
+
+            {/* Care Team Specialists co-managing this patient */}
+            <div className="flex items-center gap-1.5 text-xs text-neutral-600 mt-1 flex-wrap">
+              <Stethoscope className="h-3.5 w-3.5 text-secondary shrink-0" />
+              <span className="font-semibold text-neutral-800">Co-managed with:</span>
+              <span>
+                {(patient.careTeam || []).map((d) => `${d.name.split(',')[0]} (${d.specialty.split('&')[0].trim()})`).join(' • ')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Patient Switcher Button */}
+        <div className="flex items-center gap-2 self-start md:self-center shrink-0">
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => setIsQueueModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold shadow-sm"
+          >
+            <Users className="h-4 w-4 text-secondary" />
+            <span>Switch Patient Queue ({patients.length})</span>
+            <ChevronDown className="h-3.5 w-3.5 text-white/80" />
+          </Button>
+        </div>
+      </div>
+
       {/* Clinician Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-neutral-200/80 pb-6">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary mb-1">
             <Stethoscope className="h-3.5 w-3.5 text-secondary" />
-            Clinician Handover & Reconciliation Queue
+            Cross-Specialist Medication Reconciliation & Safety Queue
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">
-            Patient Reconciliation: {patient.name}
+          <h1 className="text-xl sm:text-2xl font-extrabold text-neutral-900 tracking-tight">
+            Handover Reconciliation for {patient.name}
           </h1>
           <p className="text-sm text-neutral-600 mt-1 max-w-2xl">
-            Review patient discrepancies and unverified optical extractions against source documents before committing to the electronic health record.
+            Review prescriptions from all consulting doctors. Resolve patient-reported discrepancies and address cross-specialist drug interactions.
           </p>
         </div>
 
@@ -109,15 +173,14 @@ export const ClinicianDashboard: React.FC = () => {
           <div className="text-xs">
             <p className="text-neutral-500">Adjudicating Physician</p>
             <p className="font-bold text-neutral-900">{clinician.name}</p>
-            <p className="text-neutral-500 font-mono text-[11px]">NPI: {clinician.npi}</p>
+            <p className="text-neutral-500 font-mono text-[11px]">{clinician.specialty || clinician.clinic}</p>
           </div>
         </div>
       </div>
 
       {/* Clinical Metrics Triage Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        
-        {/* Metric 1: Needs Review (Primary urgency) */}
+        {/* Metric 1: Needs Review */}
         <div className="bg-white border border-neutral-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-neutral-500 text-xs mb-2 font-medium">
             <span>Needs Review</span>
@@ -144,13 +207,13 @@ export const ClinicianDashboard: React.FC = () => {
         {/* Metric 3: Systemic Conflicts */}
         <div className="bg-white border border-neutral-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-neutral-500 text-xs mb-2 font-medium">
-            <span>Systemic Conflicts</span>
+            <span>Cross-Doctor Conflicts</span>
             <AlertTriangle className="h-4 w-4 text-critical" />
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-critical">
             {counts.conflict}
           </div>
-          <p className="text-[11px] text-neutral-500 mt-1">High-risk medication interactions</p>
+          <p className="text-[11px] text-neutral-500 mt-1">Multi-doctor interactions</p>
         </div>
 
         {/* Metric 4: Verified */}
@@ -164,7 +227,6 @@ export const ClinicianDashboard: React.FC = () => {
           </div>
           <p className="text-[11px] text-neutral-500 mt-1">Approved for handover</p>
         </div>
-
       </div>
 
       {/* Critical Conflict Alert if present */}
@@ -175,187 +237,209 @@ export const ClinicianDashboard: React.FC = () => {
           </div>
           <div className="flex-1 text-xs sm:text-sm">
             <h4 className="font-bold text-[#922B2B]">
-              High-Risk Clinical Conflict Detected in Handover Ingestion
+              Cross-Doctor Clinical Handover Conflict Detected
             </h4>
             <p className="text-neutral-700 mt-0.5 leading-relaxed">
-              Hydrochlorothiazide 25mg is concurrently prescribed with active Chlorthalidone therapy. Click <strong>Review Provenance</strong> to deprecate duplicate diuretic therapy or adjust clinical intent.
+              One or more medications prescribed by different specialists in {patient.name}'s care team present drug-drug interactions or conflicting instructions. Review the provenance and flag notes below before confirming handover.
             </p>
           </div>
         </div>
       )}
 
-      {/* Triage Queue Table */}
+      {/* Main Reconciliation Table */}
       <Card className="border border-neutral-200 shadow-card overflow-hidden">
-        
-        <CardHeader className="bg-white border-b border-neutral-200 pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <CardHeader className="bg-neutral-50/50 border-b border-neutral-200/80 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <CardTitle className="text-lg font-bold text-neutral-900">
-                Prescription Provenance & Reconciliation Queue
+              <CardTitle className="text-lg font-bold text-neutral-900 flex items-center gap-2">
+                <span>Prescription Reconciliation Queue</span>
+                <span className="text-xs bg-neutral-200 text-neutral-700 font-bold px-2 py-0.5 rounded-full">
+                  {filteredMedications.length} of {medications.length} Items
+                </span>
               </CardTitle>
-              <CardDescription className="text-xs text-neutral-500">
-                Source Document: <span className="font-mono text-neutral-700 font-semibold">{document ? document.fileName : 'Awaiting Ingestion'}</span>
+              <CardDescription className="text-xs text-neutral-600 mt-0.5">
+                Multi-specialist chart for {patient.name}. Verify extractions or resolve patient-reported flags.
               </CardDescription>
             </div>
 
             {/* Filter Pills */}
-            <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-lg border border-neutral-200 self-start sm:self-auto text-xs">
+            <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-lg text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setActiveFilter('NEEDS_REVIEW')}
-                className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-md transition-all ${
                   activeFilter === 'NEEDS_REVIEW'
-                    ? 'bg-white text-primary shadow-xs font-bold'
+                    ? 'bg-white text-primary font-bold shadow-xs'
                     : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
                 Needs Review ({counts.needsClinicianReview})
               </button>
-
               <button
                 type="button"
-                onClick={() => setActiveFilter('ALL')}
-                className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
-                  activeFilter === 'ALL'
-                    ? 'bg-white text-primary shadow-xs font-bold'
+                onClick={() => setActiveFilter('FLAGGED')}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  activeFilter === 'FLAGGED'
+                    ? 'bg-white text-warning font-bold shadow-xs'
                     : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
-                All ({counts.total})
+                Patient Flagged ({counts.flagged})
               </button>
-
               <button
                 type="button"
                 onClick={() => setActiveFilter('VERIFIED')}
-                className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-md transition-all ${
                   activeFilter === 'VERIFIED'
-                    ? 'bg-white text-primary shadow-xs font-bold'
+                    ? 'bg-white text-success font-bold shadow-xs'
                     : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
                 Verified ({counts.verified})
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('ALL')}
+                className={`px-3 py-1.5 rounded-md transition-all ${
+                  activeFilter === 'ALL'
+                    ? 'bg-white text-neutral-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                All Items ({medications.length})
+              </button>
             </div>
           </div>
         </CardHeader>
 
-        {/* Triage Table */}
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[20%]">Medication & Strength</TableHead>
-                <TableHead className="w-[24%]">Extracted Instructions</TableHead>
-                <TableHead className="w-[14%]">Status</TableHead>
-                <TableHead className="w-[24%]">Discrepancy / Provenance Context</TableHead>
-                <TableHead className="w-[18%] text-right">Clinician Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMedications.length === 0 ? (
+        <div className="p-0">
+          {filteredMedications.length === 0 ? (
+            <div className="p-12 text-center space-y-2">
+              <CheckCircle2 className="h-8 w-8 text-success mx-auto" />
+              <h4 className="text-sm font-bold text-neutral-800">Queue is Clear for {patient.name}</h4>
+              <p className="text-xs text-neutral-500">
+                {activeFilter === 'NEEDS_REVIEW'
+                  ? 'All medications for this patient have been verified and reconciled.'
+                  : 'No medications match the active filter.'}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="py-12 text-center text-xs text-neutral-500">
-                    No prescription medications in this triage filter. When a patient uploads a prescription, it will appear here for clinical sign-off.
-                  </TableCell>
+                  <TableHead className="w-[20%]">Medication & Strength</TableHead>
+                  <TableHead className="w-[22%]">Instructions</TableHead>
+                  <TableHead className="w-[20%]">Prescribing Doctor</TableHead>
+                  <TableHead className="w-[14%]">Status & Discrepancy</TableHead>
+                  <TableHead className="w-[12%]">Confidence</TableHead>
+                  <TableHead className="w-[12%] text-right">Action</TableHead>
                 </TableRow>
-              ) : (
-                filteredMedications.map((med) => (
-                  <TableRow key={med.id} className="hover:bg-neutral-50/80 transition-colors">
-                  
-                  {/* Medication & Strength */}
-                  <TableCell>
-                    <div className="font-bold text-neutral-900 text-sm">{med.medicineName || med.name}</div>
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <span className="font-mono text-xs font-bold bg-neutral-100 text-neutral-800 px-2 py-0.5 rounded border border-neutral-200">
-                        {med.strength}
-                      </span>
-                      <span className="font-mono text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full inline-block">
-                        {med.timesPerDay || 1}x / day
-                      </span>
-                    </div>
-                  </TableCell>
+              </TableHeader>
+              <TableBody>
+                {filteredMedications.map((med) => {
+                  const isPrescribedByThisDoctor =
+                    med.prescribedBy === clinician.name ||
+                    (!med.prescribedBy && clinician.title.includes('Primary'));
 
-                  {/* Instructions */}
-                  <TableCell className="text-xs text-neutral-700 leading-relaxed">
-                    {med.instructions}
-                  </TableCell>
+                  return (
+                    <TableRow key={med.id} className="hover:bg-neutral-50/80 transition-colors">
+                      {/* Name & Strength */}
+                      <TableCell>
+                        <div className="font-bold text-neutral-900 text-sm">{med.name}</div>
+                        <div className="font-mono text-xs text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded inline-block mt-0.5 border border-neutral-200">
+                          {med.strength}
+                        </div>
+                      </TableCell>
 
-                  {/* Status */}
-                  <TableCell>
-                    {renderStatusBadge(med.status)}
-                  </TableCell>
+                      {/* Instructions */}
+                      <TableCell className="text-xs text-neutral-700 leading-relaxed">
+                        {med.instructions}
+                      </TableCell>
 
-                  {/* Context / Flags */}
-                  <TableCell>
-                    {med.status === 'PATIENT_FLAGGED' && med.patientFlagNote && (
-                      <div className="bg-[#fff1f2] border border-[#fca5a5] p-2 rounded text-xs text-[#922B2B]">
-                        <span className="font-bold flex items-center gap-1">
-                          <Flag className="h-3 w-3 text-warning" />
-                          Patient Note:
-                        </span>
-                        <p className="italic mt-0.5 truncate max-w-[240px]" title={med.patientFlagNote}>
-                          "{med.patientFlagNote}"
-                        </p>
-                      </div>
-                    )}
+                      {/* Prescribing Doctor & Specialty */}
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-900">
+                          <Stethoscope className="h-3.5 w-3.5 text-secondary shrink-0" />
+                          <span>{med.prescribedBy || patient.doctor}</span>
+                        </div>
+                        <div className="text-[10px] text-primary mt-0.5">
+                          {med.doctorSpecialty || 'Primary Care'}
+                        </div>
+                        {isPrescribedByThisDoctor ? (
+                          <span className="inline-block mt-1 text-[9px] bg-primary/10 text-primary font-bold px-1.5 py-0.2 rounded">
+                            Prescribed by You
+                          </span>
+                        ) : (
+                          <span className="inline-block mt-1 text-[9px] bg-neutral-100 text-neutral-600 font-semibold px-1.5 py-0.2 rounded border border-neutral-200">
+                            External Specialist
+                          </span>
+                        )}
+                      </TableCell>
 
-                    {med.status === 'CONFLICT' && med.conflictDetails && (
-                      <div className="bg-[#fdf2f2] border border-[#f87171] p-2 rounded text-xs text-[#922B2B]">
-                        <span className="font-bold flex items-center gap-1">
-                          <AlertTriangle className="h-3 w-3 text-critical" />
-                          Therapy Conflict:
-                        </span>
-                        <p className="mt-0.5 text-[11px]">{med.conflictDetails.conflictingWith}</p>
-                      </div>
-                    )}
+                      {/* Status */}
+                      <TableCell>
+                        {renderStatusBadge(med.status)}
+                        {med.patientFlagNote && (
+                          <div className="text-[11px] text-warning mt-1 font-medium italic line-clamp-2">
+                            "{med.patientFlagNote}"
+                          </div>
+                        )}
+                        {med.conflictDetails && (
+                          <div className="text-[11px] text-critical mt-1 font-bold">
+                            ⚠️ Conflicts with: {med.conflictDetails.conflictingWith}
+                          </div>
+                        )}
+                      </TableCell>
 
-                    {med.status === 'VERIFIED' && med.clinicianResolution && (
-                      <div className="text-xs text-neutral-600 flex items-center gap-1.5">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
-                        <span className="truncate max-w-[240px]" title={med.clinicianResolution.clinicianNote}>
-                          Signed: "{med.clinicianResolution.clinicianNote}"
-                        </span>
-                      </div>
-                    )}
+                      {/* Optical Confidence */}
+                      <TableCell>
+                        <div className="text-xs font-mono font-bold text-neutral-700">
+                          {med.confidence || 95}%
+                        </div>
+                        <span className="text-[10px] text-neutral-400">OCR Confidence</span>
+                      </TableCell>
 
-                    {med.status === 'PENDING' && (
-                      <div className="text-xs text-neutral-500 italic">
-                        Raw OCR extraction • Pending physician verification
-                      </div>
-                    )}
-                  </TableCell>
-
-                  {/* Action Button */}
-                  <TableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant={med.status === 'VERIFIED' ? 'outline' : 'primary'}
-                      size="sm"
-                      onClick={() => handleOpenProvenance(med)}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold"
-                    >
-                      <FileSearch className="h-3.5 w-3.5" />
-                      <span>{med.status === 'VERIFIED' ? 'Re-examine' : 'Review & Sign Off'}</span>
-                    </Button>
-                  </TableCell>
-
-                </TableRow>
-              )))}
-            </TableBody>
-          </Table>
+                      {/* Actions */}
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleOpenProvenance(med)}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold shadow-xs"
+                        >
+                          <FileSearch className="h-3.5 w-3.5" />
+                          <span>Review & Sign</span>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </div>
       </Card>
 
-      {/* Audit Trail Section */}
+      {/* Clinical Audit Trail for this Patient */}
       <ClinicianAuditLog />
 
-      {/* Provenance Reconciliation Modal */}
+      {/* Provenance Viewer Modal */}
       <ProvenanceViewer
         medication={selectedMedForProvenance}
         isOpen={isProvenanceModalOpen}
         onClose={() => setIsProvenanceModalOpen(false)}
       />
 
+      {/* Multi-Patient Selection Queue Modal */}
+      <PatientQueueModal
+        isOpen={isQueueModalOpen}
+        onClose={() => setIsQueueModalOpen(false)}
+        patients={patients}
+        selectedPatientId={selectedPatientId}
+        onSelectPatient={(newPatId) => setSelectedPatientId(newPatId)}
+        patientReviewCounts={patientReviewCounts}
+      />
     </main>
   );
 };
