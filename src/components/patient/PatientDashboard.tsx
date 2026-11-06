@@ -13,9 +13,6 @@ import {
   Loader2,
   ScanText,
   FileImage,
-  Code2,
-  Copy,
-  Check,
   Zap,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card';
@@ -48,23 +45,8 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
   onOpenDocumentViewer,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [showStrictJson, setShowStrictJson] = useState(false);
-  const [copiedJson, setCopiedJson] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { isUploading, uploadProgressText, uploadPrescriptionFile, strictResults } = useMedications();
-
-  // Handle JSON copy
-  const handleCopyStrictJson = () => {
-    const dataToCopy = (strictResults && strictResults.length > 0)
-      ? (strictResults.length === 1 ? strictResults[0] : strictResults)
-      : medications.map(m => ({
-          medicineName: m.medicineName || (m.strength && m.strength !== 'As directed' ? `${m.name} ${m.strength}` : m.name),
-          timesPerDay: m.timesPerDay || 1,
-        }));
-    navigator.clipboard.writeText(JSON.stringify(dataToCopy, null, 2));
-    setCopiedJson(true);
-    setTimeout(() => setCopiedJson(false), 2000);
-  };
+  const { isUploading, uploadProgressText, uploadPrescriptionFile } = useMedications();
 
   // Handle native file input selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -299,20 +281,6 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
               </div>
 
               <div className="flex items-center gap-2 self-start sm:self-auto text-xs">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowStrictJson(!showStrictJson)}
-                  className={`text-xs gap-1.5 h-8 font-semibold ${
-                    showStrictJson
-                      ? 'bg-primary text-white hover:bg-primary-hover border-primary'
-                      : 'text-primary border-primary/30 hover:bg-primary/5'
-                  }`}
-                >
-                  <Code2 className="h-3.5 w-3.5" />
-                  <span>{showStrictJson ? 'Hide Target JSON' : 'Anti-Gravity Target JSON'}</span>
-                </Button>
                 <span className="font-medium text-neutral-500">Total:</span>
                 <span className="font-bold text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded-full">
                   {medications.length}
@@ -346,51 +314,6 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
             </div>
           ) : (
             <>
-              {/* Anti-Gravity Strict Target Schema Inspector */}
-              {showStrictJson && (
-                <div className="p-4 bg-neutral-900 text-neutral-100 border-b border-neutral-700 font-mono text-xs animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-800">
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-emerald-400" />
-                      <span className="font-bold text-white text-xs">
-                        Anti-Gravity Core Engine Target Data Output
-                      </span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCopyStrictJson}
-                      className="text-xs h-7 text-neutral-300 hover:text-white hover:bg-white/10 gap-1.5"
-                    >
-                      {copiedJson ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                      <span>{copiedJson ? 'Copied Valid JSON' : 'Copy Clean JSON'}</span>
-                    </Button>
-                  </div>
-                  <pre className="overflow-x-auto p-3.5 bg-black/50 rounded-lg text-emerald-400 text-xs leading-relaxed max-h-64 border border-neutral-800">
-                    {JSON.stringify(
-                      (strictResults && strictResults.length > 0)
-                        ? (strictResults.length === 1 ? strictResults[0] : strictResults)
-                        : (medications.length === 1
-                            ? {
-                                medicineName: medications[0].medicineName || (medications[0].strength && medications[0].strength !== 'As directed' ? `${medications[0].name} ${medications[0].strength}` : medications[0].name),
-                                timesPerDay: medications[0].timesPerDay || 1,
-                              }
-                            : medications.map((m) => ({
-                                medicineName: m.medicineName || (m.strength && m.strength !== 'As directed' ? `${m.name} ${m.strength}` : m.name),
-                                timesPerDay: m.timesPerDay || 1,
-                              }))),
-                      null,
-                      2
-                    )}
-                  </pre>
-                  <p className="mt-2 text-[11px] text-neutral-400 flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
-                    <span>Strictly extracted: brand/generic medicineName and calculated integer timesPerDay. All pharmacy/patient/billing noise stripped.</span>
-                  </p>
-                </div>
-              )}
-
               {/* Desktop Table View */}
               <div className="hidden md:block">
                 <Table>
