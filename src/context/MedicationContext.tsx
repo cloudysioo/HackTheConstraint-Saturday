@@ -234,7 +234,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     doctorSpecialty?: string
   ): Promise<boolean> => {
     setIsUploading(true);
-    setUploadProgressText(`Scanning prescription from ${doctorName || 'doctor'}...`);
+    setUploadProgressText('Scanning the document...');
 
     const assigningDoctor = doctorName || patient.doctor || 'Dr. Rajesh Iyer, MD';
     const assigningSpecialty = doctorSpecialty || 'Internal Medicine & Primary Care';
@@ -244,7 +244,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const formData = new FormData();
       formData.append('prescription', file);
 
-      setUploadProgressText('Connecting to medTrace OCR Engine...');
+      setUploadProgressText('Scanning the document...');
 
       const response = await fetch('/api/prescriptions/upload', {
         method: 'POST',
@@ -274,39 +274,37 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     } catch {}
 
-    // 2. Try Gemini 1.5 Flash Vision
+    // 2. Try Gemini Vision (via secure serverless route on Vercel or direct key)
     const effectiveKey = geminiApiKey || getStoredGeminiApiKey();
-    if (effectiveKey && effectiveKey.trim().length > 5) {
-      try {
-        setUploadProgressText('Running Gemini Flash Multimodal Clinical Extraction...');
-        const geminiResult = await processGeminiPrescriptionOCR(file, effectiveKey.trim(), (msg) => {
-          setUploadProgressText(msg);
-        });
+    try {
+      setUploadProgressText('Scanning the document...');
+      const geminiResult = await processGeminiPrescriptionOCR(file, effectiveKey?.trim() || '', (msg) => {
+        setUploadProgressText(msg);
+      });
 
-        const taggedMeds = geminiResult.medications.map((m) => ({
-          ...m,
-          patientId: selectedPatientId,
-          prescribedBy: assigningDoctor,
-          doctorSpecialty: assigningSpecialty,
-          prescribedDate: new Date().toISOString().split('T')[0],
-        }));
+      const taggedMeds = geminiResult.medications.map((m) => ({
+        ...m,
+        patientId: selectedPatientId,
+        prescribedBy: assigningDoctor,
+        doctorSpecialty: assigningSpecialty,
+        prescribedDate: new Date().toISOString().split('T')[0],
+      }));
 
-        setDocument(geminiResult.document);
-        setAllMedications((prev) => [...taggedMeds, ...prev]);
-        setAuditLogs((prev) => [geminiResult.auditLog, ...prev]);
-        if (geminiResult.rawOcrText) setRawOcrText(geminiResult.rawOcrText);
+      setDocument(geminiResult.document);
+      setAllMedications((prev) => [...taggedMeds, ...prev]);
+      setAuditLogs((prev) => [geminiResult.auditLog, ...prev]);
+      if (geminiResult.rawOcrText) setRawOcrText(geminiResult.rawOcrText);
 
-        setIsUploading(false);
-        setUploadProgressText('');
-        return true;
-      } catch (geminiErr: any) {
-        console.warn('Gemini Flash OCR fallback to client engine:', geminiErr);
-      }
+      setIsUploading(false);
+      setUploadProgressText('');
+      return true;
+    } catch (geminiErr: any) {
+      console.warn('Gemini Flash OCR fallback to client engine:', geminiErr);
     }
 
     // 3. Fallback: In-browser WebAssembly OCR
     try {
-      setUploadProgressText('Running in-browser OCR Engine...');
+      setUploadProgressText('Scanning the document...');
       const clientResult = await processClientPrescriptionOCR(file, (msg) => {
         setUploadProgressText(msg);
       });

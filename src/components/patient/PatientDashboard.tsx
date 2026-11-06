@@ -303,11 +303,8 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
           <CardHeader className="bg-neutral-50/50 border-b border-neutral-100 pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <CardTitle id="upload-section-heading" className="text-lg font-bold text-neutral-900 flex items-center gap-2">
-                  <span>Prescription Document Upload & OCR</span>
-                  <span className="text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded font-bold">
-                    Tesseract Engine Active
-                  </span>
+                <CardTitle id="upload-section-heading" className="text-lg font-bold text-neutral-900">
+                  Prescription Document Upload & OCR
                 </CardTitle>
                 <CardDescription className="text-xs text-neutral-600">
                   Select any prescription photo or PDF. Tag the consulting doctor so medications are correctly mapped.
@@ -354,7 +351,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     Extracting Medical Text with OCR...
                   </h4>
                   <p className="text-xs font-mono text-primary font-medium animate-pulse">
-                    {uploadProgressText || 'Scanning optical text and medical entities...'}
+                    {uploadProgressText || 'Scanning the document...'}
                   </p>
                 </div>
               ) : (

@@ -180,22 +180,58 @@ export async function preprocessImageForHandwriting(file: File): Promise<File> {
       try {
         const imgData = ctx.getImageData(0, 0, width, height);
         const data = imgData.data;
+        const totalPixels = width * height;
+        const gray = new Uint8Array(totalPixels);
 
-        // Adaptive ink contrast stretching for doctor handwriting
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-          if (gray < 130) {
-            gray = Math.max(0, gray * 0.6); // Darken ink strokes
-          } else {
-            gray = Math.min(255, 128 + (gray - 128) * 1.5); // Whiten background
-          }
-          data[i] = gray;
-          data[i + 1] = gray;
-          data[i + 2] = gray;
+        // 1. Grayscale luminance calculation
+        for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+          gray[j] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
         }
+
+        // 2. Integral image (Summed-Area Table) for fast O(1) local window mean
+        const integral = new Float64Array(totalPixels);
+        for (let y = 0; y < height; y++) {
+          let rowSum = 0;
+          const rowOffset = y * width;
+          for (let x = 0; x < width; x++) {
+            rowSum += gray[rowOffset + x];
+            if (y === 0) {
+              integral[rowOffset + x] = rowSum;
+            } else {
+              integral[rowOffset + x] = integral[(y - 1) * width + x] + rowSum;
+            }
+          }
+        }
+
+        // 3. Bradley-Roth Adaptive Thresholding (eliminates phone shadows and lighting gradients)
+        const s = Math.max(16, Math.floor(width / 16));
+        const s2 = Math.floor(s / 2);
+        const t = 0.14; // 14% darker than surrounding paper = ink stroke
+
+        for (let y = 0; y < height; y++) {
+          const y1 = Math.max(0, y - s2);
+          const y2 = Math.min(height - 1, y + s2);
+          const yOffset = y * width;
+          for (let x = 0; x < width; x++) {
+            const x1 = Math.max(0, x - s2);
+            const x2 = Math.min(width - 1, x + s2);
+            const count = (x2 - x1 + 1) * (y2 - y1 + 1);
+
+            let sum = integral[y2 * width + x2];
+            if (y1 > 0) sum -= integral[(y1 - 1) * width + x2];
+            if (x1 > 0) sum -= integral[y2 * width + (x1 - 1)];
+            if (y1 > 0 && x1 > 0) sum += integral[(y1 - 1) * width + (x1 - 1)];
+
+            const threshold = (sum / count) * (1 - t);
+            const isInk = gray[yOffset + x] <= threshold;
+            const val = isInk ? 0 : 255;
+            const idx = (yOffset + x) * 4;
+            data[idx] = val;
+            data[idx + 1] = val;
+            data[idx + 2] = val;
+          }
+        }
+
         ctx.putImageData(imgData, 0, 0);
         canvas.toBlob((blob) => {
           if (blob) {
@@ -261,7 +297,13 @@ export function extractStrength(text: string): string | null {
 }
 
 export function extractDrugName(text: string): { name: string; isKnown: boolean } {
-  let clean = text.replace(/^(?:Tab(?:\.|let)?|Cap(?:\.|sule)?|Syr(?:\.|up)?|Inj(?:\.|ection)?|Rx|\d+[\.\)])\s*/i, '').trim();
+  // Separate concatenated words and digits (e.g. "Dolo650" -> "Dolo 650", "Pan40" -> "Pan 40")
+  let clean = text
+    .replace(/([a-zA-Z]+)(\d+)/g, '$1 $2')
+    .replace(/(\d+)([a-zA-Z]+)/g, '$1 $2')
+    .replace(/^(?:Tab(?:\.|let)?|Cap(?:\.|sule)?|Syr(?:\.|up)?|Inj(?:\.|ection)?|Rx|\d+[\.\)])\s*/i, '')
+    .trim();
+
   clean = clean.replace(/\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|iu)?\b/gi, '').trim();
   clean = clean.replace(/[^a-zA-Z0-9\s\-\+\(\)\/]/g, '').trim();
 
@@ -335,10 +377,10 @@ export async function processClientPrescriptionOCR(
   let rawLines: Array<{ text: string; confidence: number; bbox: { top: number; left: number; width: number; height: number } }> = [];
   let fullText = '';
 
-  onProgress?.('Initializing in-browser Neural OCR engine...');
+  onProgress?.('Scanning the document...');
 
   try {
-    onProgress?.('Enhancing image ink contrast for handwriting recognition...');
+    onProgress?.('Scanning the document...');
     const preprocessed = await preprocessImageForHandwriting(file);
 
     // Run client-side Tesseract.js directly inside the browser WebWorker with local/CDN fallback for Vercel
@@ -350,7 +392,14 @@ export async function processClientPrescriptionOCR(
     } catch {
       worker = await createWorker('eng');
     }
-    onProgress?.('Scanning optical document and recognizing characters...');
+    onProgress?.('Scanning the document...');
+    try {
+      await (worker as any).setParameters({
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.,/()+%×* ',
+      });
+    } catch {
+      // proceed if parameter setting is unsupported by environment
+    }
     const ret = await worker.recognize(preprocessed, {}, { blocks: true });
     fullText = ret.data.text || '';
 
@@ -386,7 +435,7 @@ export async function processClientPrescriptionOCR(
     ];
   }
 
-  onProgress?.('Extracting clinical entities & verifying dosages...');
+  onProgress?.('Scanning the document...');
 
   // Clinical Entity Resolution - Apply Rigid Adaptive Stripping of all extraneous hospital/billing/patient data
   const medications: Medication[] = [];
@@ -527,7 +576,7 @@ export async function processClientPrescriptionOCR(
 
   const strictResults: AntiGravityExtractionResult[] = medications.map((m) => ({
     medicineName: m.medicineName || `${m.name} ${m.strength}`,
-    timesPerDay: m.timesPerDay,
+    timesPerDay: m.timesPerDay || 1,
   }));
 
   const document: UploadedDocument = {
