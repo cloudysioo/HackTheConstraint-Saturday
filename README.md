@@ -65,27 +65,10 @@ When a patient moves across healthcare environments, each provider maintains iso
 |**LOW**|🔵 **Name Variant**|Brand vs. Generic name alignment needing quick confirmation|*Glucophage* matched with *Metformin*|
 
 
-## > Tech Stack - to be done later
 
-* **Frontend:** N/A
-* **Backend:** Python N/A
-* **Document Processing / OCR:** N/A
-* **Data Structuring \& Alignment:** N/A
-* **Database:** N/A
-* **Audit Logging:** N/A
+## > Getting Started 
 
-
-## > Getting Started - to be done later
-
-### Prerequisites
-
-Ensure you have the following installed on your machine:
-
-* **Node.js** (v18.0.0 or higher)
-* **Python** (v3.10 or higher)
-* **Git**
-
-### &#x20;- Installation - to be done later
+### &#x20;- Installation
 
 1. **Clone the Repository**
 
@@ -127,7 +110,7 @@ Ensure you have the following installed on your machine:
 4. Open your browser and navigate to `http://localhost:3000`.
 
 
-## > Security \& Compliance - to be done later
+## > Security \& Compliance
 
 * **HIPAA \& GDPR Awareness:** Built around privacy-by-design principles, decoupling PII from medical data extraction models.
 * **Tamper-Evident Logs:** Append-only audit histories preserve accountability across all human and machine interactions.
@@ -141,14 +124,4 @@ Ensure you have the following installed on your machine:
 * **Kushagra Sinha**
 * **Vaibhav Singh**
 * **Tridip Bhattacharjee**
-
-
-## > License - to be done later
-
-This project is licensed under the [MIT License](LICENSE).
-
-
-<div align="center">
-  <sub>Built with ❤️ for safer patient transitions.</sub>
-</div>
 
