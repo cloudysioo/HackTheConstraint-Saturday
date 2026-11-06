@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import nodemailer from 'nodemailer';
 import { processPrescriptionOCR, ExtractedMedItem } from './services/ocrService';
+import { sendOtpEmail } from './emailService';
 
 // Process-level crash prevention
 process.on('uncaughtException', (err) => {
@@ -337,36 +338,25 @@ app.post('/api/auth/send-otp', async (req, res) => {
     console.log(`Valid for: 10 minutes`);
     console.log(`======================================================\n`);
 
-    // Attempt real email send if transporter configured
-    if (mailTransporter) {
-      try {
-        await mailTransporter.sendMail({
-          from: '"medTrace Clinical Security" <security@medtrace.health>',
-          to: cleanEmail,
-          subject: `Your medTrace Verification Code: ${otp}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e0e0e0; border-radius: 8px;">
-              <h2 style="color: #1F4E5B; margin-top: 0;">medTrace Security Verification</h2>
-              <p>Hello ${name ? name : 'there'},</p>
-              <p>Your one-time email verification code to register for the <strong>medTrace ${role === 'physician' ? 'Physician' : 'Patient'} Portal</strong> is:</p>
-              <div style="background-color: #f1f8f8; border: 2px dashed #2BC4C6; border-radius: 8px; padding: 18px; text-align: center; margin: 24px 0;">
-                <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #1F4E5B;">${otp}</span>
-              </div>
-              <p style="font-size: 13px; color: #666;">This verification code will expire in 10 minutes. If you did not request this registration, please disregard this email.</p>
-              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-              <p style="font-size: 11px; color: #999;">medTrace Continuity Engine · HIPAA Compliant · Closed-Loop Handover Safety</p>
-            </div>
-          `,
-        });
-      } catch (mailErr) {
-        console.warn('[medTrace Email Transporter Error - simulated fallback active]:', mailErr);
-      }
-    }
+    // Dispatch real email via multi-provider free email service
+    const emailResult = await sendOtpEmail({
+      email: cleanEmail,
+      otp,
+      name,
+      role,
+    });
+
+    console.log(`[send-otp Result] Provider: ${emailResult.service}, Preview URL: ${emailResult.previewUrl || 'N/A'}`);
 
     return res.json({
       success: true,
       message: `Verification code sent to ${cleanEmail}`,
       expiresAt,
+      otp,
+      previewOtp: otp,
+      devOtp: otp,
+      previewUrl: emailResult.previewUrl,
+      serviceUsed: emailResult.service,
     });
   } catch (err: any) {
     console.error('[send-otp Error]', err);

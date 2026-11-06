@@ -16,6 +16,7 @@ import {
   RefreshCw,
   ArrowRight,
   Clock,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole } from '../../types/auth';
@@ -65,6 +66,17 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [resendCooldown, setResendCooldown] = useState<number>(60);
+  const [dispatchedOtp, setDispatchedOtp] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [serviceUsed, setServiceUsed] = useState<string | null>(null);
+
+  const handleAutoFillOtp = (code: string) => {
+    const digits = code.trim().slice(0, 6).split('');
+    while (digits.length < 6) digits.push('');
+    setOtpDigits(digits);
+    setError(null);
+    otpInputRefs.current[5]?.focus();
+  };
 
   // Countdown timer for OTP resend
   useEffect(() => {
@@ -136,6 +148,10 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
         return;
       }
 
+      if (res.previewOtp) setDispatchedOtp(res.previewOtp);
+      if (res.previewUrl) setPreviewUrl(res.previewUrl);
+      if (res.serviceUsed) setServiceUsed(res.serviceUsed);
+
       setStep('otp');
       setResendCooldown(60);
       setOtpDigits(['', '', '', '', '', '']);
@@ -152,6 +168,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
     try {
       const res = await sendRegistrationOtp(email, activeTab, name);
       if (res.success) {
+        if (res.previewOtp) setDispatchedOtp(res.previewOtp);
+        if (res.previewUrl) setPreviewUrl(res.previewUrl);
+        if (res.serviceUsed) setServiceUsed(res.serviceUsed);
         setResendCooldown(60);
       } else {
         setError(res.error || 'Failed to resend verification code.');
@@ -686,6 +705,55 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                     Please check your inbox (and spam folder) and enter the code below.
                   </p>
                 </div>
+
+                {/* Dispatched OTP & Live Preview Sandbox Banner */}
+                {dispatchedOtp && (
+                  <div className="bg-secondary/10 border border-secondary/30 rounded-xl p-3.5 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-primary">
+                        <Mail className="h-4 w-4 text-secondary" />
+                        <span>Security Code Dispatched</span>
+                      </div>
+                      {serviceUsed && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                          {serviceUsed}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between bg-white rounded-lg p-2.5 border border-secondary/20 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-neutral-500 text-[11px]">Verification Code:</span>
+                        <span className="font-mono text-base font-extrabold tracking-widest text-primary">
+                          {dispatchedOtp}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAutoFillOtp(dispatchedOtp)}
+                        className="px-2.5 py-1 text-[11px] font-bold bg-secondary hover:bg-secondary-hover text-white rounded-md transition-colors shadow-2xs flex items-center gap-1"
+                      >
+                        <span>Auto-fill Code</span>
+                        <ArrowRight className="h-3 w-3" />
+                      </button>
+                    </div>
+
+                    {previewUrl && (
+                      <div className="pt-0.5 flex items-center justify-between text-[11px]">
+                        <span className="text-neutral-500">Live preview inbox active:</span>
+                        <a
+                          href={previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-bold text-secondary-dark hover:underline inline-flex items-center gap-1"
+                        >
+                          <span>Open Sent Email ↗</span>
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 6-Digit PIN Boxes */}
                 <div className="py-2">

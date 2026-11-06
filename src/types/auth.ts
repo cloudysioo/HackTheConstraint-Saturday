@@ -69,6 +69,8 @@ export interface SendOtpResult {
   error?: string;
   previewOtp?: string;
   expiresAt?: number;
+  previewUrl?: string;
+  serviceUsed?: string;
 }
 
 export interface VerifyOtpResult {

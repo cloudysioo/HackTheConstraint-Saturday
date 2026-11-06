@@ -332,32 +332,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-    const expiresAt = Date.now() + 10 * 60 * 1000;
+    let resolvedOtp = String(Math.floor(100000 + Math.random() * 900000));
+    let expiresAt = Date.now() + 10 * 60 * 1000;
+    let previewUrl: string | undefined = undefined;
+    let serviceUsed: string | undefined = undefined;
 
-    // 1. Try server backend (sends real email via Nodemailer)
+    // 1. Try server backend (Express or Vercel serverless multi-provider email service)
     try {
       const res = await fetch('/api/auth/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail, role, name }),
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(6000),
       });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          clientOtpStore.set(cleanEmail, { code: generatedOtp, expiresAt, attempts: 0 });
-          return { success: true, expiresAt };
+          if (data.otp || data.previewOtp || data.devOtp) {
+            resolvedOtp = data.otp || data.previewOtp || data.devOtp;
+          }
+          if (data.expiresAt) expiresAt = data.expiresAt;
+          previewUrl = data.previewUrl;
+          serviceUsed = data.serviceUsed;
         }
       }
     } catch {
       // Backend offline fallback
     }
 
-    // Client fallback OTP store
-    clientOtpStore.set(cleanEmail, { code: generatedOtp, expiresAt, attempts: 0 });
-    console.log(`[medTrace Real Security Email Dispatch] Sent OTP to ${cleanEmail}`);
-    return { success: true, expiresAt };
+    // Client fallback OTP store synced with server-generated code
+    clientOtpStore.set(cleanEmail, { code: resolvedOtp, expiresAt, attempts: 0 });
+    console.log(`[medTrace Email Verification] Dispatched OTP [ ${resolvedOtp} ] to ${cleanEmail}`);
+    return {
+      success: true,
+      expiresAt,
+      previewOtp: resolvedOtp,
+      previewUrl,
+      serviceUsed,
+    };
   };
 
   // ── Verify Registration OTP ────────────────────────────────
