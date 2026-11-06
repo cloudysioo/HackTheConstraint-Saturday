@@ -12,7 +12,6 @@ import {
 } from '../types/medication';
 import {
   mockPatient,
-  mockPatients,
   mockDoctors,
   mockClinician,
   initialAuditLogs,
@@ -84,10 +83,10 @@ interface MedicationContextType {
 const MedicationContext = createContext<MedicationContextType | undefined>(undefined);
 
 export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, activeRole } = useAuth();
+  const { currentUser, activeRole, getAllPhysicians } = useAuth();
 
-  // Multi-patient roster
-  const [patients, setPatients] = useState<PatientProfile[]>(mockPatients);
+  // Multi-patient roster initialized from persistent storage
+  const [patients, setPatients] = useState<PatientProfile[]>(() => DatabaseService.getPatients());
   const [selectedPatientId, setSelectedPatientId] = useState<string>(() => {
     if (currentUser?.role === 'patient') {
       return (currentUser as PatientUser).mrn || 'PT-94021';
@@ -95,8 +94,56 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return 'PT-94021';
   });
 
-  const [availableDoctors, setAvailableDoctors] = useState<ConsultingDoctor[]>(mockDoctors);
+  const [availableDoctors, setAvailableDoctors] = useState<ConsultingDoctor[]>(() => DatabaseService.getAvailableDoctors());
   const [filterDoctorName, setFilterDoctorName] = useState<string | 'ALL'>('ALL');
+
+  // Synchronize available doctors with registered approved physicians from AuthContext
+  useEffect(() => {
+    const physicians = getAllPhysicians();
+    if (physicians && physicians.length > 0) {
+      setAvailableDoctors((prev) => {
+        let hasChanges = false;
+        const merged = [...prev];
+        for (const phy of physicians) {
+          const exists = merged.some(
+            (d) =>
+              d.doctorId === phy.doctorId ||
+              (d.registrationNumber && d.registrationNumber === phy.registrationNumber) ||
+              d.name.toLowerCase() === phy.name.toLowerCase()
+          );
+          if (!exists) {
+            hasChanges = true;
+            merged.push({
+              id: `doc-${phy.id}`,
+              doctorId: phy.doctorId || `DOC-${phy.id}`,
+              name: phy.name,
+              specialty: phy.specialty || 'General Medicine',
+              clinic: phy.clinic || 'Metro Health Clinic',
+              phone: '(555) 019-4820',
+              email: phy.email,
+              registrationNumber: phy.registrationNumber,
+              approvalStatus: 'APPROVED',
+            });
+          }
+        }
+        if (hasChanges) {
+          DatabaseService.saveAvailableDoctors(merged);
+          return merged;
+        }
+        return prev;
+      });
+    }
+  }, [getAllPhysicians]);
+
+  // Persist patients whenever care team or roster changes
+  useEffect(() => {
+    DatabaseService.savePatients(patients);
+  }, [patients]);
+
+  // Persist available doctors directory
+  useEffect(() => {
+    DatabaseService.saveAvailableDoctors(availableDoctors);
+  }, [availableDoctors]);
 
   // Multi-patient synchronization when a user logs in
   useEffect(() => {
@@ -123,7 +170,9 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             allergies: [],
             conditions: ['Primary Care Evaluation'],
           };
-          return [registeredPatientProfile, ...prev];
+          const updated = [registeredPatientProfile, ...prev];
+          DatabaseService.savePatients(updated);
+          return updated;
         }
         return prev;
       });
@@ -255,13 +304,18 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const timestamp = getFormattedTime();
     let approvedDocName = '';
 
-    setPatients((prev) =>
-      prev.map((p) => {
+    setPatients((prev) => {
+      const updated = prev.map((p) => {
         if (p.id === patientId) {
           return {
             ...p,
             careTeam: p.careTeam.map((d) => {
-              if (d.id === doctorId || d.doctorId === doctorId) {
+              if (
+                d.id === doctorId ||
+                d.doctorId === doctorId ||
+                d.name === doctorId ||
+                (d.registrationNumber && d.registrationNumber === doctorId)
+              ) {
                 approvedDocName = d.name;
                 return { ...d, approvalStatus: 'APPROVED' as const };
               }
@@ -270,8 +324,10 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           };
         }
         return p;
-      })
-    );
+      });
+      DatabaseService.savePatients(updated);
+      return updated;
+    });
 
     const newLog: AuditLogEntry = {
       id: `audit-${Date.now()}`,
@@ -291,17 +347,25 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Doctor rejects patient's linking request
   const rejectDoctorRequest = (patientId: string, doctorId: string) => {
     const timestamp = getFormattedTime();
-    setPatients((prev) =>
-      prev.map((p) => {
+    setPatients((prev) => {
+      const updated = prev.map((p) => {
         if (p.id === patientId) {
           return {
             ...p,
-            careTeam: p.careTeam.filter((d) => d.id !== doctorId && d.doctorId !== doctorId),
+            careTeam: p.careTeam.filter(
+              (d) =>
+                d.id !== doctorId &&
+                d.doctorId !== doctorId &&
+                d.name !== doctorId &&
+                d.registrationNumber !== doctorId
+            ),
           };
         }
         return p;
-      })
-    );
+      });
+      DatabaseService.savePatients(updated);
+      return updated;
+    });
 
     const newLog: AuditLogEntry = {
       id: `audit-${Date.now()}`,
@@ -320,17 +384,25 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Patient cancels pending request
   const cancelDoctorRequest = (patientId: string, doctorId: string) => {
-    setPatients((prev) =>
-      prev.map((p) => {
+    setPatients((prev) => {
+      const updated = prev.map((p) => {
         if (p.id === patientId) {
           return {
             ...p,
-            careTeam: p.careTeam.filter((d) => d.id !== doctorId && d.doctorId !== doctorId),
+            careTeam: p.careTeam.filter(
+              (d) =>
+                d.id !== doctorId &&
+                d.doctorId !== doctorId &&
+                d.name !== doctorId &&
+                d.registrationNumber !== doctorId
+            ),
           };
         }
         return p;
-      })
-    );
+      });
+      DatabaseService.savePatients(updated);
+      return updated;
+    });
   };
 
   // Patient removes an active consulting doctor from care team
@@ -338,19 +410,33 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const timestamp = getFormattedTime();
     let removedDocName = '';
 
-    setPatients((prev) =>
-      prev.map((p) => {
+    setPatients((prev) => {
+      const updated = prev.map((p) => {
         if (p.id === patientId) {
-          const target = p.careTeam.find((d) => d.id === doctorId || d.doctorId === doctorId);
+          const target = p.careTeam.find(
+            (d) =>
+              d.id === doctorId ||
+              d.doctorId === doctorId ||
+              d.name === doctorId ||
+              d.registrationNumber === doctorId
+          );
           if (target) removedDocName = target.name;
           return {
             ...p,
-            careTeam: p.careTeam.filter((d) => d.id !== doctorId && d.doctorId !== doctorId),
+            careTeam: p.careTeam.filter(
+              (d) =>
+                d.id !== doctorId &&
+                d.doctorId !== doctorId &&
+                d.name !== doctorId &&
+                d.registrationNumber !== doctorId
+            ),
           };
         }
         return p;
-      })
-    );
+      });
+      DatabaseService.savePatients(updated);
+      return updated;
+    });
 
     // If active filter was set to this doctor, reset to ALL
     if (filterDoctorName === removedDocName) {
@@ -439,7 +525,13 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const medications =
     filterDoctorName === 'ALL'
       ? currentPatientMeds
-      : currentPatientMeds.filter((m) => m.prescribedBy === filterDoctorName);
+      : currentPatientMeds.filter(
+          (m) =>
+            m.prescribedBy === filterDoctorName ||
+            (m.prescribedBy &&
+              filterDoctorName &&
+              m.prescribedBy.toLowerCase().includes(filterDoctorName.toLowerCase().split(',')[0].trim()))
+        );
 
   // Compute patient review counts dictionary for the doctor's roster
   const patientReviewCounts = patients.reduce(

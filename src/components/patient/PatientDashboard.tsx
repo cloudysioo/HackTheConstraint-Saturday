@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   UploadCloud,
   FileSearch,
@@ -69,12 +69,25 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
     updateDiscrepancyStatus,
   } = useMedications();
 
+  // Filter approved doctors in care team (excluding pending approval)
+  const approvedCareTeam = (patient.careTeam || []).filter(
+    (d) => d.approvalStatus !== 'PENDING_APPROVAL'
+  );
+
   // Selected doctor when uploading a new prescription
   const [uploadDoctorName, setUploadDoctorName] = useState<string>(
-    patient.careTeam?.[0]?.name || patient.doctor || 'Dr. Rajesh Iyer, MD'
+    approvedCareTeam[0]?.name || patient.doctor || 'Dr. Rajesh Iyer, MD'
   );
   const [isAddDoctorModalOpen, setIsAddDoctorModalOpen] = useState(false);
   const [doctorToRemove, setDoctorToRemove] = useState<ConsultingDoctor | null>(null);
+
+  // Keep uploadDoctorName aligned to an approved doctor
+  useEffect(() => {
+    const isCurrentlyApproved = approvedCareTeam.some((d) => d.name === uploadDoctorName);
+    if (!isCurrentlyApproved && approvedCareTeam.length > 0) {
+      setUploadDoctorName(approvedCareTeam[0].name);
+    }
+  }, [patient.careTeam, uploadDoctorName]);
 
   // Handle native file input selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,7 +270,13 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
         {/* Doctor Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {(patient.careTeam || []).map((doc, idx) => {
-            const docMedsCount = medications.filter((m) => m.prescribedBy === doc.name).length;
+            const docMedsCount = medications.filter(
+              (m) =>
+                m.prescribedBy === doc.name ||
+                (m.prescribedBy &&
+                  doc.name &&
+                  m.prescribedBy.toLowerCase().includes(doc.name.toLowerCase().split(',')[0].trim()))
+            ).length;
             const isSelectedFilter = filterDoctorName === doc.name;
             const isPending = doc.approvalStatus === 'PENDING_APPROVAL';
 
@@ -323,11 +342,16 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                       MD
                     </div>
                     <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-neutral-900 text-sm">{doc.name}</span>
-                        {doc.isPrimary && (
+                        {doc.isPrimary ? (
                           <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.2 rounded">
-                            Primary
+                            Primary Care
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-secondary/15 text-primary font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-secondary/30">
+                            <CheckCircle2 className="h-3 w-3 text-secondary" />
+                            <span>Active Co-Manager</span>
                           </span>
                         )}
                       </div>
@@ -485,11 +509,14 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   onChange={(e) => setUploadDoctorName(e.target.value)}
                   className="bg-transparent font-bold text-primary focus:outline-none cursor-pointer"
                 >
-                  {(patient.careTeam || []).map((doc) => (
-                    <option key={doc.id} value={doc.name}>
-                      {doc.name} ({doc.specialty}){doc.approvalStatus === 'PENDING_APPROVAL' ? ' — [Waiting for Approval]' : ''}
-                    </option>
-                  ))}
+                  {(patient.careTeam || []).map((doc) => {
+                    const isPending = doc.approvalStatus === 'PENDING_APPROVAL';
+                    return (
+                      <option key={doc.id} value={doc.name} disabled={isPending}>
+                        {doc.name} ({doc.specialty}) {isPending ? '— [Pending Approval - Cannot Upload]' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>

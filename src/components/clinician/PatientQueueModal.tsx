@@ -132,8 +132,16 @@ export const PatientQueueModal: React.FC<PatientQueueModalProps> = ({
                         <Stethoscope className="h-3 w-3 text-secondary shrink-0" />
                         <span className="text-neutral-700 font-semibold">Co-managed with:</span>
                         <span>
-                          {(patient.careTeam || []).map((d) => d.name.split(',')[0]).join(', ')}
+                          {(patient.careTeam || [])
+                            .filter((d) => d.approvalStatus !== 'PENDING_APPROVAL')
+                            .map((d) => d.name.split(',')[0])
+                            .join(', ') || 'Primary Care Sole Provider'}
                         </span>
+                        {(patient.careTeam || []).some((d) => d.approvalStatus === 'PENDING_APPROVAL') && (
+                          <span className="text-[10px] text-warning font-bold bg-warning/15 px-1.5 py-0.2 rounded">
+                            {(patient.careTeam || []).filter((d) => d.approvalStatus === 'PENDING_APPROVAL').length} pending approval
+                          </span>
+                        )}
                       </div>
 
                       {/* Conditions */}

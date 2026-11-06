@@ -22,7 +22,9 @@ import {
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { useMedications } from '../../context/MedicationContext';
-import { Medication } from '../../types/medication';
+import { useAuth } from '../../context/AuthContext';
+import { PhysicianUser } from '../../types/auth';
+import { Medication, ConsultingDoctor } from '../../types/medication';
 import { ProvenanceViewer } from './ProvenanceViewer';
 import { ClinicianAuditLog } from './ClinicianAuditLog';
 import { PatientQueueModal } from './PatientQueueModal';
@@ -41,6 +43,26 @@ export const ClinicianDashboard: React.FC = () => {
     approveDoctorRequest,
     rejectDoctorRequest,
   } = useMedications();
+
+  const { currentUser } = useAuth();
+  const physicianUser = currentUser?.role === 'physician' ? (currentUser as PhysicianUser) : null;
+  const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'info'; text: string } | null>(null);
+
+  const isTargetedToCurrentDoctor = (doc: ConsultingDoctor) => {
+    if (!physicianUser) return true;
+    const docName = doc.name.toLowerCase();
+    const phyName = physicianUser.name.toLowerCase();
+    const docPrefix = docName.split(',')[0].replace(/^dr\.?\s*/i, '').trim();
+    const phyPrefix = phyName.split(',')[0].replace(/^dr\.?\s*/i, '').trim();
+
+    return Boolean(
+      (doc.doctorId && physicianUser.doctorId && doc.doctorId === physicianUser.doctorId) ||
+      (doc.registrationNumber && physicianUser.registrationNumber && doc.registrationNumber === physicianUser.registrationNumber) ||
+      (doc.email && physicianUser.email && doc.email.toLowerCase() === physicianUser.email.toLowerCase()) ||
+      docPrefix.includes(phyPrefix) ||
+      phyPrefix.includes(docPrefix)
+    );
+  };
 
   const [selectedMedForProvenance, setSelectedMedForProvenance] = useState<Medication | null>(null);
   const [isProvenanceModalOpen, setIsProvenanceModalOpen] = useState(false);
@@ -132,8 +154,15 @@ export const ClinicianDashboard: React.FC = () => {
               <Stethoscope className="h-3.5 w-3.5 text-secondary shrink-0" />
               <span className="font-semibold text-neutral-800">Co-managed with:</span>
               <span>
-                {(patient.careTeam || []).map((d) => `${d.name.split(',')[0]} (${d.specialty.split('&')[0].trim()})`).join(' • ')}
+                {(patient.careTeam || [])
+                  .filter((d) => d.approvalStatus !== 'PENDING_APPROVAL')
+                  .map((d) => `${d.name.split(',')[0]} (${d.specialty.split('&')[0].trim()})`).join(' • ') || 'Primary Care Sole Provider'}
               </span>
+              {(patient.careTeam || []).some((d) => d.approvalStatus === 'PENDING_APPROVAL') && (
+                <span className="text-[10px] bg-warning/15 text-warning font-bold px-2 py-0.5 rounded-full border border-warning/30">
+                  {(patient.careTeam || []).filter((d) => d.approvalStatus === 'PENDING_APPROVAL').length} request pending
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -152,6 +181,29 @@ export const ClinicianDashboard: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* ── ACTION FEEDBACK BANNER ── */}
+      {actionFeedback && (
+        <div
+          className={`p-4 rounded-xl flex items-center justify-between gap-3 shadow-xs border ${
+            actionFeedback.type === 'success'
+              ? 'bg-[#e8f5e9] border-[#a5d6a7] text-success'
+              : 'bg-neutral-100 border-neutral-300 text-neutral-700'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 text-xs font-semibold">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{actionFeedback.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionFeedback(null)}
+            className="text-xs font-bold opacity-60 hover:opacity-100 underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* ── INCOMING CARE TEAM REQUESTS NOTIFICATION CARD ── */}
       {pendingDoctorRequests.length > 0 && (
@@ -176,59 +228,84 @@ export const ClinicianDashboard: React.FC = () => {
           </div>
 
           <div className="space-y-2 pt-1">
-            {pendingDoctorRequests.map(({ patient: reqPatient, doctor: reqDoc }) => (
-              <div
-                key={`${reqPatient.id}-${reqDoc.id}`}
-                className="bg-white rounded-xl p-3.5 border border-warning-border/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                    PT
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-neutral-900 text-xs sm:text-sm">
-                        {reqPatient.name}
-                      </span>
-                      <span className="font-mono text-[10px] bg-neutral-100 text-neutral-600 px-1.5 py-0.2 rounded border border-neutral-200">
-                        {reqPatient.id}
-                      </span>
-                      <span className="text-[10px] text-neutral-400">
-                        {reqDoc.requestedAt ? `Requested ${reqDoc.requestedAt}` : 'Recently requested'}
-                      </span>
-                    </div>
-                    <div className="text-xs text-neutral-600 mt-0.5">
-                      Requested Specialist: <strong className="text-primary">{reqDoc.name}</strong> ({reqDoc.specialty}) • {reqDoc.clinic}
-                    </div>
-                  </div>
-                </div>
+            {pendingDoctorRequests.map(({ patient: reqPatient, doctor: reqDoc }) => {
+              const isDirect = isTargetedToCurrentDoctor(reqDoc);
 
-                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => rejectDoctorRequest(reqPatient.id, reqDoc.id)}
-                    className="text-xs font-semibold text-neutral-600 hover:text-critical hover:border-critical"
-                  >
-                    Decline
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="primary"
-                    onClick={() => {
-                      approveDoctorRequest(reqPatient.id, reqDoc.id);
-                      setSelectedPatientId(reqPatient.id);
-                    }}
-                    className="text-xs font-bold bg-primary hover:bg-primary-hover text-white flex items-center gap-1.5 shadow-xs"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5 text-secondary" />
-                    <span>Accept & Join Care Team</span>
-                  </Button>
+              return (
+                <div
+                  key={`${reqPatient.id}-${reqDoc.id}`}
+                  className={`bg-white rounded-xl p-3.5 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs transition-all ${
+                    isDirect ? 'border-secondary/60 ring-1 ring-secondary/20' : 'border-warning-border/70'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                      PT
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-neutral-900 text-xs sm:text-sm">
+                          {reqPatient.name}
+                        </span>
+                        <span className="font-mono text-[10px] bg-neutral-100 text-neutral-600 px-1.5 py-0.2 rounded border border-neutral-200">
+                          {reqPatient.id}
+                        </span>
+                        {isDirect ? (
+                          <span className="text-[10px] bg-secondary/15 text-primary font-bold px-2 py-0.5 rounded-full border border-secondary/30">
+                            Direct Request for You
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-neutral-100 text-neutral-600 font-medium px-2 py-0.5 rounded-full border border-neutral-200">
+                            Department Specialist
+                          </span>
+                        )}
+                        <span className="text-[10px] text-neutral-400">
+                          {reqDoc.requestedAt ? `Requested ${reqDoc.requestedAt}` : 'Recently requested'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-neutral-600 mt-0.5">
+                        Requested Specialist: <strong className="text-primary">{reqDoc.name}</strong> ({reqDoc.specialty}) • {reqDoc.clinic}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        rejectDoctorRequest(reqPatient.id, reqDoc.id);
+                        setActionFeedback({
+                          type: 'info',
+                          text: `Declined care team request from ${reqPatient.name}.`,
+                        });
+                      }}
+                      className="text-xs font-semibold text-neutral-600 hover:text-critical hover:border-critical"
+                    >
+                      Decline
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="primary"
+                      onClick={() => {
+                        approveDoctorRequest(reqPatient.id, reqDoc.id);
+                        setSelectedPatientId(reqPatient.id);
+                        setActionFeedback({
+                          type: 'success',
+                          text: `Care team link activated for ${reqPatient.name}! ${reqDoc.name} is now authorized for closed-loop medication reconciliation. Chart loaded.`,
+                        });
+                      }}
+                      className="text-xs font-bold bg-primary hover:bg-primary-hover text-white flex items-center gap-1.5 shadow-xs"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 text-secondary" />
+                      <span>Accept & Join Care Team</span>
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

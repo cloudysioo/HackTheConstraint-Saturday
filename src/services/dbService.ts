@@ -1,11 +1,13 @@
-import { Medication, PrescriptionComparisonReport, ComparisonDiscrepancy } from '../types/medication';
-import { initialMockMedications } from '../data/mockData';
+import { Medication, PrescriptionComparisonReport, ComparisonDiscrepancy, PatientProfile, ConsultingDoctor } from '../types/medication';
+import { initialMockMedications, mockPatients, mockDoctors } from '../data/mockData';
 
 const STORAGE_KEYS = {
   MEDICATIONS: 'medtrace_db_medications_v2',
   DOCUMENTS: 'medtrace_db_documents_v2',
   COMPARISONS: 'medtrace_db_comparisons_v2',
   AUDIT_LOGS: 'medtrace_db_audit_logs_v2',
+  PATIENTS: 'medtrace_db_patients_v2',
+  DOCTORS: 'medtrace_db_doctors_v2',
 };
 
 // Seed initial historical comparison to demonstrate the exact 4 flags from the clinical specification
@@ -213,5 +215,59 @@ export class DatabaseService {
       return updated;
     } catch {}
     return initialSeedComparisons;
+  }
+
+  /**
+   * Loads all patient profiles (with care teams & approval states)
+   */
+  static getPatients(): PatientProfile[] {
+    if (typeof window === 'undefined') return mockPatients;
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.PATIENTS);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return mockPatients;
+  }
+
+  /**
+   * Persists patient profiles and their consulting care teams
+   */
+  static savePatients(patients: PatientProfile[]): void {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.PATIENTS, JSON.stringify(patients));
+    } catch (e) {
+      console.warn('[DB Service] Could not save patients to localStorage:', e);
+    }
+  }
+
+  /**
+   * Loads master consulting doctor directory
+   */
+  static getAvailableDoctors(): ConsultingDoctor[] {
+    if (typeof window === 'undefined') return mockDoctors;
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.DOCTORS);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return mockDoctors;
+  }
+
+  /**
+   * Persists master consulting doctor directory
+   */
+  static saveAvailableDoctors(doctors: ConsultingDoctor[]): void {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.DOCTORS, JSON.stringify(doctors));
+    } catch (e) {
+      console.warn('[DB Service] Could not save doctors to localStorage:', e);
+    }
   }
 }

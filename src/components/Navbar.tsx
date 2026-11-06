@@ -10,7 +10,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenAccountSettings }) => {
   const { counts } = useMedications();
-  const { currentUser, activeRole, logout } = useAuth();
+  const { currentUser, activeRole, logout, loginDemo } = useAuth();
 
   const patientUser = activeRole === 'patient' ? (currentUser as PatientUser) : null;
   const physicianUser = activeRole === 'physician' ? (currentUser as PhysicianUser) : null;
@@ -41,24 +41,35 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAccountSettings }) => {
             </div>
           </div>
 
-          {/* Centre: active portal badge */}
-          <div className="flex items-center bg-black/25 px-4 py-2 rounded-xl border border-white/15 gap-2">
-            {activeRole === 'patient' ? (
-              <>
-                <UserCheck className="h-4 w-4 text-secondary" />
-                <span className="text-xs font-bold text-white">Patient Portal</span>
-              </>
-            ) : (
-              <>
-                <Stethoscope className="h-4 w-4 text-secondary" />
-                <span className="text-xs font-bold text-white">Physician Portal</span>
-                {counts.needsClinicianReview > 0 && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-warning text-white ml-1">
-                    {counts.needsClinicianReview}
-                  </span>
-                )}
-              </>
-            )}
+          {/* Centre: active portal badge & quick demo switch */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-black/25 px-3 sm:px-4 py-2 rounded-xl border border-white/15 gap-2">
+              {activeRole === 'patient' ? (
+                <>
+                  <UserCheck className="h-4 w-4 text-secondary" />
+                  <span className="text-xs font-bold text-white">Patient Portal</span>
+                </>
+              ) : (
+                <>
+                  <Stethoscope className="h-4 w-4 text-secondary" />
+                  <span className="text-xs font-bold text-white">Physician Portal</span>
+                  {counts.needsClinicianReview > 0 && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-warning text-white ml-1">
+                      {counts.needsClinicianReview}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loginDemo(activeRole === 'patient' ? 'physician' : 'patient')}
+              title={`Quick switch to ${activeRole === 'patient' ? 'Physician' : 'Patient'} Portal for closed-loop review`}
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white/10 hover:bg-white/20 border border-white/20 text-secondary transition-all"
+            >
+              <span>Switch to {activeRole === 'patient' ? 'Physician' : 'Patient'}</span>
+            </button>
           </div>
 
           {/* Right: user info + logout */}
