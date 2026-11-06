@@ -74,7 +74,9 @@ export const Navbar: React.FC = () => {
                   <div className="text-white/60 text-[10px]">MRN: {patientUser.mrn}</div>
                 )}
                 {physicianUser && (
-                  <div className="text-secondary text-[10px] font-mono">NPI: {physicianUser.npi}</div>
+                  <div className="text-secondary text-[10px] font-mono">
+                    Reg: {physicianUser.registrationNumber || physicianUser.npi}
+                  </div>
                 )}
               </div>
             </div>

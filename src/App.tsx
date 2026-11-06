@@ -8,25 +8,51 @@ import { FlagErrorModal } from './components/FlagErrorModal';
 import { DocumentViewerModal } from './components/DocumentViewerModal';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
+import { AdminLoginPage } from './components/auth/AdminLoginPage';
+import { AdminDashboard } from './components/admin/AdminDashboard';
+import { PhysicianPendingReview } from './components/physician/PhysicianPendingReview';
 import { Medication, FlagDiscrepancyType } from './types/medication';
+import { PhysicianUser } from './types/auth';
 
-type AuthView = 'login' | 'register';
+type AuthView = 'login' | 'register' | 'admin';
 
 // ───────────────────────────────────────────────
-// Inner app: requires AuthProvider already mounted
+// Inner app: handles routing based on auth state & role
 // ───────────────────────────────────────────────
 const AuthGate: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, currentUser, activeRole } = useAuth();
   const [authView, setAuthView] = useState<AuthView>('login');
 
-  if (!isAuthenticated) {
+  // 1. Not Authenticated → Show Login, Register, or Admin Login
+  if (!isAuthenticated || !currentUser) {
     if (authView === 'register') {
       return <RegisterPage onNavigateToLogin={() => setAuthView('login')} />;
     }
-    return <LoginPage onNavigateToRegister={() => setAuthView('register')} />;
+    if (authView === 'admin') {
+      return <AdminLoginPage onBackToUserLogin={() => setAuthView('login')} />;
+    }
+    return (
+      <LoginPage
+        onNavigateToRegister={() => setAuthView('register')}
+        onNavigateToAdmin={() => setAuthView('admin')}
+      />
+    );
   }
 
-  // User is authenticated → mount the full app with medication state
+  // 2. Administrator Role → Clinical Admin Dashboard
+  if (activeRole === 'admin') {
+    return <AdminDashboard />;
+  }
+
+  // 3. Physician Role → Check Credential Approval Status
+  if (activeRole === 'physician') {
+    const physician = currentUser as PhysicianUser;
+    if (physician.approvalStatus === 'pending' || physician.approvalStatus === 'rejected') {
+      return <PhysicianPendingReview />;
+    }
+  }
+
+  // 4. Approved Physician or Verified Patient → Main Portal with Medication Context
   return (
     <MedicationProvider>
       <MainAppContent />
@@ -35,7 +61,7 @@ const AuthGate: React.FC = () => {
 };
 
 // ───────────────────────────────────────────────
-// Main app content (shown after login)
+// Main app content (shown for approved physician & patients)
 // ───────────────────────────────────────────────
 const MainAppContent: React.FC = () => {
   const {
