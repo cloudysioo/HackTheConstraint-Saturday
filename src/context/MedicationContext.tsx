@@ -7,13 +7,14 @@ import {
   ConsultingDoctor,
   AuditLogEntry,
   FlagDiscrepancyType,
+  ComparisonDiscrepancy,
+  PrescriptionComparisonReport,
 } from '../types/medication';
 import {
   mockPatient,
   mockPatients,
   mockDoctors,
   mockClinician,
-  initialMockMedications,
   initialAuditLogs,
 } from '../data/mockData';
 import { processClientPrescriptionOCR } from '../services/clientOcrService';
@@ -22,12 +23,18 @@ import {
   getStoredGeminiApiKey,
   setStoredGeminiApiKey,
 } from '../services/geminiOcrService';
+import { DatabaseService } from '../services/dbService';
+import { comparePrescriptionMedications } from '../services/reconciliationService';
 import { useAuth } from './AuthContext';
 import { PatientUser, PhysicianUser } from '../types/auth';
 
 interface MedicationContextType {
   medications: Medication[];
   allMedications: Medication[];
+  comparisonReports: PrescriptionComparisonReport[];
+  activeComparisonReport: PrescriptionComparisonReport | null;
+  setActiveComparisonReportId: (id: string) => void;
+  updateDiscrepancyStatus: (reportId: string, discrepancyId: string, status: ComparisonDiscrepancy['status']) => void;
   activePortal: 'patient' | 'clinician';
   setActivePortal: (portal: 'patient' | 'clinician') => void;
   patient: PatientProfile;
@@ -139,7 +146,30 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const currentUserName = currentUser?.name || 'Unknown';
 
-  const [allMedications, setAllMedications] = useState<Medication[]>(initialMockMedications);
+  const [allMedications, setAllMedications] = useState<Medication[]>(() => DatabaseService.getMedications());
+  const [comparisonReports, setComparisonReports] = useState<PrescriptionComparisonReport[]>(() =>
+    DatabaseService.getComparisons('PT-94021')
+  );
+  const [activeComparisonReportId, setActiveComparisonReportId] = useState<string | null>(null);
+
+  // Sync comparison reports when active patient changes
+  useEffect(() => {
+    const reps = DatabaseService.getComparisons(selectedPatientId);
+    setComparisonReports(reps);
+  }, [selectedPatientId]);
+
+  const activeComparisonReport =
+    comparisonReports.find((r) => r.id === activeComparisonReportId) || comparisonReports[0] || null;
+
+  const updateDiscrepancyStatus = (
+    reportId: string,
+    discrepancyId: string,
+    status: ComparisonDiscrepancy['status']
+  ) => {
+    const updated = DatabaseService.updateDiscrepancyStatus(reportId, discrepancyId, status);
+    setComparisonReports(updated.filter((r) => r.patientId === selectedPatientId));
+  };
+
   const [activePortal, setActivePortal] = useState<'patient' | 'clinician'>(
     activeRole === 'physician' ? 'clinician' : 'patient'
   );
@@ -227,6 +257,85 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     {} as Record<string, { needsReview: number; total: number; flagged: number; conflict: number }>
   );
 
+  // Helper to commit extracted medications, run longitudinal comparison, and persist to database
+  const commitExtractedPrescription = (
+    rawMeds: Medication[],
+    assigningDoctor: string,
+    assigningSpecialty: string,
+    file: File,
+    extractedDoc?: UploadedDocument | null,
+    rawOcr?: string,
+    extraLogs?: AuditLogEntry[]
+  ) => {
+    const docId = extractedDoc?.id || `doc-${Date.now()}`;
+    const docName = file.name;
+
+    const baseTaggedMeds = rawMeds.map((m) => ({
+      ...m,
+      patientId: selectedPatientId,
+      prescribedBy: assigningDoctor,
+      doctorSpecialty: assigningSpecialty,
+      prescribedDate: new Date().toISOString().split('T')[0],
+      sourceDocument: docName,
+    }));
+
+    // 1. Fetch current patient medications from database/state
+    const existingPatientMeds = allMedications.filter(
+      (m) => (m.patientId || 'PT-94021') === selectedPatientId
+    );
+
+    // 2. Run Reconciliation & Longitudinal Comparison against prior records
+    const { annotatedNewMeds, report } = comparePrescriptionMedications(
+      existingPatientMeds,
+      baseTaggedMeds,
+      {
+        patientId: selectedPatientId,
+        documentId: docId,
+        documentName: docName,
+        doctorName: assigningDoctor,
+      }
+    );
+
+    // 3. Save new medications to persistent database
+    const updatedAll = DatabaseService.addPrescriptionMedications(annotatedNewMeds);
+    setAllMedications(updatedAll);
+
+    // 4. Save comparison report to persistent database & update state
+    DatabaseService.saveComparison(report);
+    setComparisonReports((prev) => [report, ...prev]);
+    setActiveComparisonReportId(report.id);
+
+    // 5. Update active document
+    const finalDoc: UploadedDocument = extractedDoc || {
+      id: docId,
+      patientId: selectedPatientId,
+      prescribingDoctor: assigningDoctor,
+      fileName: docName,
+      fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+      uploadedAt: `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      status: 'EXTRACTED',
+      itemCount: annotatedNewMeds.length,
+    };
+    setDocument(finalDoc);
+
+    if (rawOcr) setRawOcrText(rawOcr);
+
+    // 6. Append audit log
+    const comparisonAuditLog: AuditLogEntry = {
+      id: `audit-${Date.now()}`,
+      patientId: selectedPatientId,
+      timestamp: `Today at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      medicationId: docId,
+      medicationName: docName,
+      actor: currentUserName,
+      role: activeRole === 'physician' ? 'CLINICIAN' : 'PATIENT',
+      eventType: 'EXTRACTION_APPROVED',
+      summary: `Added prescription "${docName}" from ${assigningDoctor} (${annotatedNewMeds.length} items). Compared with database records: ${report.stats.total} reconciliation flag(s) generated.`,
+      details: `Reconciliation breakdown: ${report.stats.high} High, ${report.stats.medium} Medium, ${report.stats.low} Low.`,
+    };
+    setAuditLogs((prev) => [comparisonAuditLog, ...(extraLogs || []), ...prev]);
+  };
+
   // Upload prescription for specific doctor
   const uploadPrescriptionForDoctor = async (
     file: File,
@@ -253,19 +362,16 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success) {
-          const taggedMeds = (result.medications || []).map((m: Medication) => ({
-            ...m,
-            patientId: selectedPatientId,
-            prescribedBy: assigningDoctor,
-            doctorSpecialty: assigningSpecialty,
-            prescribedDate: new Date().toISOString().split('T')[0],
-          }));
-
-          setDocument(result.document);
-          setAllMedications((prev) => [...taggedMeds, ...prev]);
-          if (result.auditLogs) setAuditLogs((prev) => [...result.auditLogs, ...prev]);
-          if (result.rawOcrText) setRawOcrText(result.rawOcrText);
+        if (result.success && Array.isArray(result.medications) && result.medications.length > 0) {
+          commitExtractedPrescription(
+            result.medications,
+            assigningDoctor,
+            assigningSpecialty,
+            file,
+            result.document,
+            result.rawOcrText,
+            result.auditLogs
+          );
 
           setIsUploading(false);
           setUploadProgressText('');
@@ -282,22 +388,21 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setUploadProgressText(msg);
       });
 
-      const taggedMeds = geminiResult.medications.map((m) => ({
-        ...m,
-        patientId: selectedPatientId,
-        prescribedBy: assigningDoctor,
-        doctorSpecialty: assigningSpecialty,
-        prescribedDate: new Date().toISOString().split('T')[0],
-      }));
+      if (geminiResult && geminiResult.medications && geminiResult.medications.length > 0) {
+        commitExtractedPrescription(
+          geminiResult.medications,
+          assigningDoctor,
+          assigningSpecialty,
+          file,
+          geminiResult.document,
+          geminiResult.rawOcrText,
+          [geminiResult.auditLog]
+        );
 
-      setDocument(geminiResult.document);
-      setAllMedications((prev) => [...taggedMeds, ...prev]);
-      setAuditLogs((prev) => [geminiResult.auditLog, ...prev]);
-      if (geminiResult.rawOcrText) setRawOcrText(geminiResult.rawOcrText);
-
-      setIsUploading(false);
-      setUploadProgressText('');
-      return true;
+        setIsUploading(false);
+        setUploadProgressText('');
+        return true;
+      }
     } catch (geminiErr: any) {
       console.warn('Gemini Flash OCR fallback to client engine:', geminiErr);
     }
@@ -309,18 +414,15 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setUploadProgressText(msg);
       });
 
-      const taggedMeds = clientResult.medications.map((m) => ({
-        ...m,
-        patientId: selectedPatientId,
-        prescribedBy: assigningDoctor,
-        doctorSpecialty: assigningSpecialty,
-        prescribedDate: new Date().toISOString().split('T')[0],
-      }));
-
-      setDocument(clientResult.document);
-      setAllMedications((prev) => [...taggedMeds, ...prev]);
-      setAuditLogs((prev) => [clientResult.auditLog, ...prev]);
-      if (clientResult.rawOcrText) setRawOcrText(clientResult.rawOcrText);
+      commitExtractedPrescription(
+        clientResult.medications,
+        assigningDoctor,
+        assigningSpecialty,
+        file,
+        clientResult.document,
+        clientResult.rawOcrText,
+        [clientResult.auditLog]
+      );
 
       setIsUploading(false);
       setUploadProgressText('');
@@ -478,6 +580,10 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       value={{
         medications,
         allMedications,
+        comparisonReports,
+        activeComparisonReport,
+        setActiveComparisonReportId,
+        updateDiscrepancyStatus,
         activePortal,
         setActivePortal,
         patient,

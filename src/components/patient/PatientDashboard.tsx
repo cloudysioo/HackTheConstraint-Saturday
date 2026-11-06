@@ -29,6 +29,7 @@ import { Button } from '../ui/button';
 import { Medication, UploadedDocument, PatientProfile } from '../../types/medication';
 import { useMedications } from '../../context/MedicationContext';
 import { AddDoctorModal } from './AddDoctorModal';
+import { PrescriptionComparisonView } from './PrescriptionComparisonView';
 
 interface PatientDashboardProps {
   patient: PatientProfile;
@@ -56,6 +57,10 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
     addConsultingDoctor,
     filterDoctorName,
     setFilterDoctorName,
+    comparisonReports,
+    activeComparisonReport,
+    setActiveComparisonReportId,
+    updateDiscrepancyStatus,
   } = useMedications();
 
   // Selected doctor when uploading a new prescription
@@ -93,8 +98,42 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
     }
   };
 
-  // Status badge with icon and text label
-  const renderStatusBadge = (status: Medication['status']) => {
+  // Status badge with icon, comparison discrepancy type, and text label
+  const renderStatusBadge = (status: Medication['status'], med?: Medication) => {
+    // If tagged with a comparison discrepancy, render high-fidelity discrepancy badge
+    if (med?.conflictDetails?.type === 'Conflict' || status === 'CONFLICT') {
+      return (
+        <Badge variant="conflict" className="bg-rose-50 text-rose-700 border-rose-300 gap-1.5 font-bold">
+          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+          <span>Conflict</span>
+        </Badge>
+      );
+    }
+    if (med?.conflictDetails?.type === 'Missing Entry') {
+      return (
+        <Badge className="bg-amber-50 text-amber-800 border-amber-300 gap-1.5 font-bold">
+          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+          <span>Missing Entry</span>
+        </Badge>
+      );
+    }
+    if (med?.conflictDetails?.type === 'Outdated') {
+      return (
+        <Badge className="bg-amber-50 text-amber-800 border-amber-300 gap-1.5 font-bold">
+          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+          <span>Outdated</span>
+        </Badge>
+      );
+    }
+    if (med?.conflictDetails?.type === 'Name Variant') {
+      return (
+        <Badge className="bg-blue-50 text-blue-700 border-blue-300 gap-1.5 font-bold">
+          <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+          <span>Name Variant</span>
+        </Badge>
+      );
+    }
+
     switch (status) {
       case 'VERIFIED':
         return (
@@ -108,13 +147,6 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
           <Badge variant="flagged">
             <Flag className="h-3.5 w-3.5 text-warning" />
             <span>Patient Flagged</span>
-          </Badge>
-        );
-      case 'CONFLICT':
-        return (
-          <Badge variant="conflict">
-            <AlertTriangle className="h-3.5 w-3.5 text-critical" />
-            <span>Conflict Detected</span>
           </Badge>
         );
       case 'PENDING':
@@ -412,6 +444,24 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
         </Card>
       </section>
 
+      {/* SECTION 1.5: Prescription Reconciliation & Longitudinal Comparison View */}
+      {comparisonReports && comparisonReports.length > 0 && (
+        <PrescriptionComparisonView
+          reports={comparisonReports}
+          activeReport={activeComparisonReport}
+          onSelectReport={setActiveComparisonReportId}
+          onUpdateStatus={updateDiscrepancyStatus}
+          onOpenFlagModal={(drugName) => {
+            const med = medications.find((m) => m.name.toLowerCase().includes(drugName.toLowerCase()));
+            if (med) {
+              onOpenFlagModal(med);
+            } else if (medications.length > 0) {
+              onOpenFlagModal(medications[0]);
+            }
+          }}
+        />
+      )}
+
       {/* SECTION 2: Unified Medication Reconciliation Table */}
       <section aria-labelledby="medications-table-heading">
         <Card className="border border-neutral-200/90 shadow-card overflow-hidden">
@@ -541,7 +591,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
 
                           {/* Status */}
                           <TableCell>
-                            {renderStatusBadge(med.status)}
+                            {renderStatusBadge(med.status, med)}
                           </TableCell>
 
                           {/* Action Column */}
@@ -584,7 +634,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                             {med.strength}
                           </span>
                         </div>
-                        <div>{renderStatusBadge(med.status)}</div>
+                        <div>{renderStatusBadge(med.status, med)}</div>
                       </div>
 
                       <div className="text-xs text-neutral-600">

@@ -48,6 +48,54 @@ export interface ConsultingDoctor {
   registrationNumber?: string;
 }
 
+export type ComparisonDiscrepancySeverity = 'HIGH' | 'MEDIUM' | 'LOW';
+export type ComparisonDiscrepancyType = 'Conflict' | 'Missing Entry' | 'Outdated' | 'Name Variant';
+
+export interface ComparisonDiscrepancy {
+  id: string;
+  patientId: string;
+  drugName: string;
+  genericName?: string;
+  severity: ComparisonDiscrepancySeverity;
+  type: ComparisonDiscrepancyType;
+  description: string;
+  example: string;
+  detectedAt: string;
+  status: 'PENDING_REVIEW' | 'CONFIRMED' | 'DISMISSED';
+  previousRecord?: {
+    medicineName: string;
+    strength?: string;
+    frequency?: string;
+    prescribedBy?: string;
+    prescribedDate?: string;
+    sourceDocument?: string;
+  };
+  currentRecord?: {
+    medicineName: string;
+    strength?: string;
+    frequency?: string;
+    prescribedBy?: string;
+    prescribedDate?: string;
+    sourceDocument?: string;
+  };
+}
+
+export interface PrescriptionComparisonReport {
+  id: string;
+  patientId: string;
+  documentId: string;
+  documentName: string;
+  comparedAt: string;
+  prescribingDoctor?: string;
+  discrepancies: ComparisonDiscrepancy[];
+  stats: {
+    high: number;
+    medium: number;
+    low: number;
+    total: number;
+  };
+}
+
 export interface Medication {
   id: string;
   patientId?: string; // Patient identifier (e.g. PT-94021)
@@ -70,11 +118,16 @@ export interface Medication {
   prescribingDoctorId?: string;
   doctorSpecialty?: string; // Specialty (e.g. Cardiology, Endocrinology, Primary Care)
   prescribedDate?: string;
+  comparisonDiscrepancy?: ComparisonDiscrepancy;
   conflictDetails?: {
-    severity: 'HIGH' | 'MEDIUM';
+    severity: 'HIGH' | 'MEDIUM' | 'LOW';
+    type?: ComparisonDiscrepancyType;
     description: string;
     conflictingWith?: string;
     prescribedByOtherDoctor?: string; // Prescribed by another doctor in care team
+    previousValue?: string;
+    currentValue?: string;
+    example?: string;
   };
 }
 

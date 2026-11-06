@@ -53,10 +53,42 @@ const upload = multer({
   },
 });
 
-// Clean state without any pre-loaded demo prescription
+// Clean state with persistent data store
 let currentMedications: ExtractedMedItem[] = [];
 let currentDocument: any = null;
 let auditLogs: any[] = [];
+let comparisonReports: any[] = [];
+
+// File-backed persistence helper
+const DB_FILE = path.resolve(process.cwd(), 'server/data/database.json');
+try {
+  if (fs.existsSync(DB_FILE)) {
+    const raw = fs.readFileSync(DB_FILE, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.medications)) currentMedications = parsed.medications;
+    if (parsed.document) currentDocument = parsed.document;
+    if (Array.isArray(parsed.auditLogs)) auditLogs = parsed.auditLogs;
+    if (Array.isArray(parsed.comparisonReports)) comparisonReports = parsed.comparisonReports;
+  }
+} catch (e) {
+  console.warn('[DB File] Could not load database.json:', e);
+}
+
+function persistDb() {
+  try {
+    fs.writeFileSync(
+      DB_FILE,
+      JSON.stringify({
+        medications: currentMedications,
+        document: currentDocument,
+        auditLogs,
+        comparisonReports,
+      }, null, 2)
+    );
+  } catch (e) {
+    console.warn('[DB File] Could not persist database.json:', e);
+  }
+}
 
 // Health Check
 app.get('/api/health', (_req, res) => {
@@ -74,7 +106,24 @@ app.get('/api/prescriptions', (_req, res) => {
     medications: currentMedications,
     document: currentDocument,
     auditLogs,
+    comparisonReports,
   });
+});
+
+// GET all prescription comparison reports
+app.get('/api/comparisons', (_req, res) => {
+  res.json({ comparisonReports });
+});
+
+// POST save a comparison report
+app.post('/api/comparisons', (req, res) => {
+  const report = req.body;
+  if (!report || !report.id) {
+    return res.status(400).json({ error: 'Invalid comparison report payload' });
+  }
+  comparisonReports = [report, ...comparisonReports.filter((c) => c.id !== report.id)];
+  persistDb();
+  res.json({ success: true, comparisonReports });
 });
 
 // POST Upload prescription file & run real OCR
@@ -121,6 +170,7 @@ app.post('/api/prescriptions/upload', upload.single('prescription'), async (req,
       details: `OCR confidence: ${ocrResult.medications[0]?.confidence || 88}%. Optical bounding boxes generated.`,
     };
     auditLogs = [auditEntry, ...auditLogs];
+    persistDb();
 
     return res.json({
       success: true,
