@@ -176,27 +176,25 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // Local backend unavailable or running on Vercel SPA, move smoothly to client AI / in-browser engine
     }
 
-    // 2. Try Gemini Vision (Anti-Gravity Multimodal OCR - works directly in-browser on Vercel)
+    // 2. Try Gemini Vision (Anti-Gravity Multimodal OCR - works via secure /api/gemini serverless route on Vercel or direct key)
     const effectiveKey = geminiApiKey || getStoredGeminiApiKey();
-    if (effectiveKey && effectiveKey.trim().length > 5) {
-      try {
-        setUploadProgressText('Running Anti-Gravity Vision Neural Entity Extraction...');
-        const geminiResult = await processGeminiPrescriptionOCR(file, effectiveKey.trim(), (msg) => {
-          setUploadProgressText(msg);
-        });
+    try {
+      setUploadProgressText('Running Anti-Gravity Vision Neural Entity Extraction...');
+      const geminiResult = await processGeminiPrescriptionOCR(file, effectiveKey?.trim() || '', (msg) => {
+        setUploadProgressText(msg);
+      });
 
-        setDocument(geminiResult.document);
-        setMedications(geminiResult.medications);
-        setStrictResults(geminiResult.strictResults);
-        setAuditLogs((prev) => [geminiResult.auditLog, ...prev]);
-        if (geminiResult.rawOcrText) setRawOcrText(geminiResult.rawOcrText);
+      setDocument(geminiResult.document);
+      setMedications(geminiResult.medications);
+      setStrictResults(geminiResult.strictResults);
+      setAuditLogs((prev) => [geminiResult.auditLog, ...prev]);
+      if (geminiResult.rawOcrText) setRawOcrText(geminiResult.rawOcrText);
 
-        setIsUploading(false);
-        setUploadProgressText('');
-        return true;
-      } catch (geminiErr: any) {
-        console.warn('Gemini Vision OCR error, falling back to in-browser engine:', geminiErr);
-      }
+      setIsUploading(false);
+      setUploadProgressText('');
+      return true;
+    } catch (geminiErr: any) {
+      console.warn('Gemini Vision OCR unavailable, falling back to in-browser engine:', geminiErr);
     }
 
     // 3. Fallback: In-browser WebAssembly Neural OCR (Zero-API, 100% works on Vercel)

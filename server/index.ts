@@ -236,6 +236,97 @@ app.post('/api/prescriptions/:id/resolve', (req, res) => {
   res.json({ success: true, medications: currentMedications, auditLogs });
 });
 
+// POST Gemini AI OCR Proxy (Server-side key security)
+app.post('/api/gemini', async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({
+      error: 'GEMINI_API_KEY is not configured on the server.',
+    });
+  }
+
+  const { base64, mimeType } = req.body || {};
+  if (!base64) {
+    return res.status(400).json({ error: 'Missing base64 image data in request body.' });
+  }
+
+  const prompt = `You are "Anti-Gravity", the high-precision medical parsing and OCR intelligence engine embedded within the MedTrace application. 
+CRITICAL INSTRUCTIONS:
+1. FOCUS ONLY ON MEDICINE DETAILS: Extract primary name and strength.
+2. CONVERT FREQUENCY TO A STRICT INTEGER timesPerDay (1, 2, 3, 4).
+3. RIGID ADAPTIVE STRIPPING: Strip all hospital/patient/billing metadata.
+Return ONLY valid JSON:
+{
+  "fullText": "Full raw text transcription line by line",
+  "medications": [
+    {
+      "medicineName": "string",
+      "name": "string",
+      "strength": "string",
+      "timesPerDay": 2,
+      "instructions": "string",
+      "confidence": 98,
+      "boundingBox": { "top": 20, "left": 15, "width": 60, "height": 10 }
+    }
+  ]
+}`;
+
+  const payload = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inline_data: {
+              mime_type: mimeType === 'application/pdf' ? 'application/pdf' : mimeType || 'image/jpeg',
+              data: base64,
+            },
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      response_mime_type: 'application/json',
+      temperature: 0.1,
+    },
+  };
+
+  const modelsToTry = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+  ];
+
+  for (const model of modelsToTry) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const json: any = await response.json();
+        const content = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (content) {
+          try {
+            return res.json(JSON.parse(content));
+          } catch {
+            return res.json({ fullText: content, medications: [] });
+          }
+        }
+      }
+    } catch {
+      // try next model
+    }
+  }
+
+  return res.status(502).json({ error: 'Failed to process image with Gemini AI.' });
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`[medTrace Backend] Running on http://localhost:${PORT}`);
