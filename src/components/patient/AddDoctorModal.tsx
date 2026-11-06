@@ -3,6 +3,7 @@ import {
   X,
   Stethoscope,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 import { ConsultingDoctor } from '../../types/medication';
 
@@ -23,6 +24,7 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
 }) => {
   const [selectedDirectoryDoctorId, setSelectedDirectoryDoctorId] = useState<string>('');
   const [isCustomMode, setIsCustomMode] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Custom doctor fields
   const [customName, setCustomName] = useState('');
@@ -38,6 +40,18 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
   const unlinkedDoctors = availableDoctors.filter(
     (d) => !currentCareTeam.some((cd) => cd.name === d.name)
   );
+
+  // Live filter by doctor name, specialty, clinic, or ID
+  const filteredUnlinkedDoctors = unlinkedDoctors.filter((doc) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      doc.name.toLowerCase().includes(q) ||
+      doc.specialty.toLowerCase().includes(q) ||
+      doc.clinic.toLowerCase().includes(q) ||
+      (doc.doctorId && doc.doctorId.toLowerCase().includes(q))
+    );
+  });
 
   const handleLinkDirectoryDoctor = () => {
     if (!selectedDirectoryDoctorId) {
@@ -143,14 +157,64 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
                 Link an accredited specialist from the Metro Health network to your chart to enable automated drug-drug interaction screening.
               </p>
 
+              {/* Search Bar */}
+              {unlinkedDoctors.length > 0 && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search doctor by name, specialty, or clinic..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 text-xs border border-neutral-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-secondary/40 focus:border-secondary bg-neutral-50/70"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 p-0.5 rounded-full"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
               {unlinkedDoctors.length === 0 ? (
                 <div className="p-4 bg-neutral-50 rounded-xl text-center text-xs text-neutral-500">
                   All doctors in the local directory are already part of your care team.
                   You can add an external specialist using the tab above.
                 </div>
+              ) : filteredUnlinkedDoctors.length === 0 ? (
+                <div className="p-6 bg-neutral-50 rounded-xl text-center space-y-2">
+                  <p className="text-xs font-bold text-neutral-800">
+                    No directory doctors found matching "{searchQuery}"
+                  </p>
+                  <p className="text-[11px] text-neutral-500">
+                    Not in the Metro Health directory? You can add them as an external specialist.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomName(searchQuery);
+                      setIsCustomMode(true);
+                    }}
+                    className="mt-1 text-xs font-bold text-secondary-dark hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>Add "{searchQuery}" as External Specialist ➔</span>
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {unlinkedDoctors.map((doc) => (
+                  <div className="flex items-center justify-between text-[11px] text-neutral-400 px-1 pb-1">
+                    <span>
+                      Showing {filteredUnlinkedDoctors.length} specialist{filteredUnlinkedDoctors.length !== 1 ? 's' : ''}
+                    </span>
+                    {searchQuery && (
+                      <span className="font-semibold text-primary">Filtered</span>
+                    )}
+                  </div>
+                  {filteredUnlinkedDoctors.map((doc) => (
                     <label
                       key={doc.id}
                       className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
@@ -168,7 +232,14 @@ export const AddDoctorModal: React.FC<AddDoctorModalProps> = ({
                         className="mt-1 text-secondary focus:ring-secondary"
                       />
                       <div className="flex-1 text-xs">
-                        <div className="font-bold text-neutral-900">{doc.name}</div>
+                        <div className="font-bold text-neutral-900 flex items-center justify-between">
+                          <span>{doc.name}</span>
+                          {doc.isPrimary && (
+                            <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.2 rounded">
+                              Primary
+                            </span>
+                          )}
+                        </div>
                         <div className="text-primary font-semibold text-[11px]">{doc.specialty}</div>
                         <div className="text-neutral-500 text-[10px] mt-0.5">{doc.clinic}</div>
                       </div>
