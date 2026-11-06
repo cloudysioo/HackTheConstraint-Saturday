@@ -19,6 +19,8 @@ import {
   getStoredGeminiApiKey,
   setStoredGeminiApiKey,
 } from '../services/geminiOcrService';
+import { useAuth } from './AuthContext';
+import { PatientUser, PhysicianUser } from '../types/auth';
 
 interface MedicationContextType {
   medications: Medication[];
@@ -26,6 +28,7 @@ interface MedicationContextType {
   setActivePortal: (portal: 'patient' | 'clinician') => void;
   patient: PatientProfile;
   clinician: ClinicianProfile;
+  currentUserName: string;
   document: UploadedDocument | null;
   auditLogs: AuditLogEntry[];
   isUploading: boolean;
@@ -55,8 +58,40 @@ interface MedicationContextType {
 const MedicationContext = createContext<MedicationContextType | undefined>(undefined);
 
 export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentUser, activeRole } = useAuth();
+
+  // Build patient and clinician profiles from authenticated user
+  const patient: PatientProfile = (() => {
+    if (currentUser?.role === 'patient') {
+      const pu = currentUser as PatientUser;
+      return {
+        name: pu.name,
+        id: pu.mrn,
+        dob: pu.dob,
+        doctor: pu.assignedDoctor,
+        clinic: pu.clinic,
+      };
+    }
+    return mockPatient;
+  })();
+
+  const clinician: ClinicianProfile = (() => {
+    if (currentUser?.role === 'physician') {
+      const phy = currentUser as PhysicianUser;
+      return {
+        name: phy.name,
+        title: phy.title,
+        npi: phy.npi,
+        clinic: phy.clinic,
+      };
+    }
+    return mockClinician;
+  })();
+
+  const currentUserName = currentUser?.name || 'Unknown';
+
   const [medications, setMedications] = useState<Medication[]>(initialMockMedications);
-  const [activePortal, setActivePortal] = useState<'patient' | 'clinician'>('patient');
+  const [activePortal, setActivePortal] = useState<'patient' | 'clinician'>(activeRole === 'physician' ? 'clinician' : 'patient');
   const [document, setDocument] = useState<UploadedDocument | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(initialAuditLogs);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -204,11 +239,11 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       timestamp,
       medicationId: id,
       medicationName: targetMedName || 'Medication',
-      actor: `${mockPatient.name} (Patient)`,
+      actor: `${currentUserName} (Patient)`,
       role: 'PATIENT',
       eventType: 'FLAG_CREATED',
       summary: `Patient flagged discrepancy (${discrepancyType}): "${comment}"`,
-      details: `Discrepancy category: ${discrepancyType}. Queued for Dr. Rajesh Iyer.`,
+      details: `Discrepancy category: ${discrepancyType}. Queued for ${clinician.name}.`,
     };
     setAuditLogs((prev) => [newAuditEntry, ...prev]);
 
@@ -241,7 +276,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             status: 'VERIFIED',
             clinicianResolution: {
               action,
-              clinicianName: mockClinician.name,
+              clinicianName: clinician.name,
               clinicianNote: note,
               resolvedAt: timestamp,
               revisedValues,
@@ -252,13 +287,13 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             if (revisedValues.strength) updatedMed.strength = revisedValues.strength;
             if (revisedValues.instructions) updatedMed.instructions = revisedValues.instructions;
             eventType = 'MEDICATION_REVISED';
-            summary = `Dr. Iyer amended prescription: Strength set to ${revisedValues.strength || med.strength}. Note: "${note}"`;
+            summary = `${currentUserName} amended prescription: Strength set to ${revisedValues.strength || med.strength}. Note: "${note}"`;
           } else if (action === 'APPROVE_EXTRACTION') {
             eventType = 'EXTRACTION_APPROVED';
-            summary = `Dr. Iyer confirmed and approved AI extraction. Note: "${note}"`;
+            summary = `${currentUserName} confirmed and approved AI extraction. Note: "${note}"`;
           } else {
             eventType = 'FLAG_DISMISSED';
-            summary = `Dr. Iyer reaffirmed original prescription after review. Note: "${note}"`;
+            summary = `${currentUserName} reaffirmed original prescription after review. Note: "${note}"`;
           }
 
           return updatedMed;
@@ -272,7 +307,7 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       timestamp,
       medicationId: id,
       medicationName: targetMedName || 'Medication',
-      actor: mockClinician.name,
+      actor: currentUserName,
       role: 'CLINICIAN',
       eventType,
       summary,
@@ -314,8 +349,9 @@ export const MedicationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         medications,
         activePortal,
         setActivePortal,
-        patient: mockPatient,
-        clinician: mockClinician,
+        patient,
+        clinician,
+        currentUserName,
         document,
         auditLogs,
         isUploading,

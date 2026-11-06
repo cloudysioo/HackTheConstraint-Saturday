@@ -1,20 +1,51 @@
 import React, { useState } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { MedicationProvider, useMedications } from './context/MedicationContext';
 import { Navbar } from './components/Navbar';
 import { PatientDashboard } from './components/patient/PatientDashboard';
 import { ClinicianDashboard } from './components/clinician/ClinicianDashboard';
 import { FlagErrorModal } from './components/FlagErrorModal';
 import { DocumentViewerModal } from './components/DocumentViewerModal';
+import { LoginPage } from './components/auth/LoginPage';
+import { RegisterPage } from './components/auth/RegisterPage';
 import { Medication, FlagDiscrepancyType } from './types/medication';
 
+type AuthView = 'login' | 'register';
+
+// ───────────────────────────────────────────────
+// Inner app: requires AuthProvider already mounted
+// ───────────────────────────────────────────────
+const AuthGate: React.FC = () => {
+  const { isAuthenticated } = useAuth();
+  const [authView, setAuthView] = useState<AuthView>('login');
+
+  if (!isAuthenticated) {
+    if (authView === 'register') {
+      return <RegisterPage onNavigateToLogin={() => setAuthView('login')} />;
+    }
+    return <LoginPage onNavigateToRegister={() => setAuthView('register')} />;
+  }
+
+  // User is authenticated → mount the full app with medication state
+  return (
+    <MedicationProvider>
+      <MainAppContent />
+    </MedicationProvider>
+  );
+};
+
+// ───────────────────────────────────────────────
+// Main app content (shown after login)
+// ───────────────────────────────────────────────
 const MainAppContent: React.FC = () => {
   const {
     medications,
-    activePortal,
     patient,
     document,
     flagMedication,
   } = useMedications();
+
+  const { activeRole } = useAuth();
 
   // Modals state for Patient Portal
   const [selectedMedForFlag, setSelectedMedForFlag] = useState<Medication | null>(null);
@@ -42,12 +73,12 @@ const MainAppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-neutral-900 flex flex-col font-sans">
-      {/* Universal Top Navigation with Portal Switcher */}
+      {/* Top navigation */}
       <Navbar />
 
-      {/* Main View Router based on active portal */}
+      {/* Route based on logged-in role */}
       <div className="flex-1">
-        {activePortal === 'patient' ? (
+        {activeRole === 'patient' ? (
           <PatientDashboard
             patient={patient}
             document={document}
@@ -60,7 +91,7 @@ const MainAppContent: React.FC = () => {
         )}
       </div>
 
-      {/* Patient View 2: Flag Error Modal */}
+      {/* Patient: Flag Error Modal */}
       <FlagErrorModal
         medication={selectedMedForFlag}
         isOpen={isFlagModalOpen}
@@ -68,7 +99,7 @@ const MainAppContent: React.FC = () => {
         onSubmitFlag={handleSubmitFlag}
       />
 
-      {/* Patient View 3: Document Viewer Modal */}
+      {/* Patient: Document Viewer Modal */}
       <DocumentViewerModal
         isOpen={isViewerModalOpen}
         onClose={() => setIsViewerModalOpen(false)}
@@ -81,11 +112,14 @@ const MainAppContent: React.FC = () => {
   );
 };
 
+// ───────────────────────────────────────────────
+// Root — AuthProvider wraps everything
+// ───────────────────────────────────────────────
 export const App: React.FC = () => {
   return (
-    <MedicationProvider>
-      <MainAppContent />
-    </MedicationProvider>
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   );
 };
 
